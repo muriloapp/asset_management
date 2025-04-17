@@ -1,0 +1,1 @@
+Asset management. In this project we aim to investigate the sensitivity of two long-only risk-based portfolios: 1) minimum-variance portfolio and 2) maximum diversification portfolio. We set-up a framework to assess and compare the impact of the parameter uncertainty for both portfolios. The exercise involve 50 stocks from FTSE100.
