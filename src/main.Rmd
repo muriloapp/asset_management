@@ -1,0 +1,293 @@
+---
+title: "MATH60633A – TP2"
+output: html_document
+date: "April, 2025"
+---
+
+**Project 1: Asset Management**
+
+
+### Load libraries and data 
+
+This assignment consider the first 50 stocks (alphabetical order) in the FTSE 100 universe. We downloaded data from January 2012 to December 2015 from the package *qrmdata* and compute weekly returns. Due to data issues, we remove two firms (DLG.L and III.L), and then add two firms using based on alphabetical order.
+
+
+```{r, message=FALSE, warning=FALSE}
+library(here)
+library(RiskPortfolios)
+library(ggplot2) 
+library(dplyr)
+
+source(here('src','core_functions.R'))
+
+set.seed(1234)
+
+load(here("data", "FTSE_const_rets.rda"))
+print(rets[1:5, 1:5])
+
+```
+
+
+### 1. In-sample sensitivity analysis
+
+We next display the sensitivity of in-sample reward and in-sample risk of portfolios of size d = 5, 10, 25 for the volatility and the correlations.
+
+#### 1.1. Impact of the dimension given the covariance structure
+
+The figures bellow present a comparative analysis of the in-sample risk-return profiles of two types of risk-based portfolios: Maximum Diversification (maxdiv) and Minimum Variance (minvol). In the first plot, each subplot corresponds to one of the portfolio construction strategies, with the left panel showing results for maxdiv and the right panel for minvol. The x-axis measures the in-sample volatility, which serves as a proxy for portfolio risk, while the y-axis captures the mean return obtained in-sample. Each dot in the plot represents a simulated portfolio (num_subsets = 100), and the portfolios are differentiated by the number of assets they include: 5 (red), 10 (green), and 25 (blue).
+
+In the maxdiv panel, we observe a broader dispersion in both risk and return. Portfolios with a larger number of assets (particularly those with 25 assets, shown in blue) tend to cluster toward the lower end of the volatility scale, suggesting that diversification indeed lowers portfolio risk in this strategy. Moreover, these portfolios achieve relatively consistent levels of mean return, forming a concentrated cluster. In contrast, portfolios with only 5 or 10 assets display higher variance in both return and volatility, indicating greater sensitivity to the specific composition of the assets chosen.
+
+In the minvol panel, volatility is more compressed, particularly for larger portfolios. Most portfolios, regardless of their dimension, achieve a lower volatility than the maxdiv portfolios. This reflects the core objective of the minvol strategy: to minimize risk regardless of return. 
+
+Comparing across the two strategies, we see that maxdiv portfolios offer greater return potential but at the cost of higher and more variable risk, particularly when the portfolio dimension is small. As the number of assets increases, both risk and return distributions become more concentrated. In contrast, minvol portfolios deliver lower risk. The visual evidence strongly suggests that dimension (number of assets) plays a critical role in stabilizing the performance of both strategies.
+
+The boxplots provide a more granular view of the distributional characteristics of the in-sample volatility and in-sample mean return for the maxdiv and minvol portfolios across portfolio dimensions. The boxplots confirm that increasing the number of assets reduces in-sample volatility for both strategies. Return variability decreases slightly with larger portfolios, but the effect is less pronounced than for volatility.Overall, adding more assets mainly improves risk control, with limited impact on returns.
+
+
+```{r, message=FALSE, warning=FALSE}
+
+dims <- c(5, 10, 25)
+num_subsets <- 100  # how many random sub-universes to sample for each d
+results_b1 <- analyze_dim_impact(rets, dims, 
+                                 num_subsets)
+
+```
+
+
+
+```{r, message=FALSE, warning=FALSE}
+
+# mean return vs vol
+ggplot(results_b1, aes(x = vol, y = mean_return, color = as.factor(dimension))) +
+  geom_point() +
+  facet_wrap(~ portfolio) +
+  labs(
+    title = "In-sample Risk vs. Return for Min-Vol and Max-Div Portfolios",
+    x     = "Volatility (in-sample)",
+    y     = "Mean Return (in-sample)",
+    color = "Dimension\n(# assets)"
+  )
+
+
+# Boxplots of Vol by dimension and portfolio 
+ggplot(results_b1, aes(x = as.factor(dimension), y = vol, fill = portfolio)) +
+  geom_boxplot(alpha = 0.6) +  # a bit of transparency
+  labs(
+    title = "Distribution of In-sample Volatility",
+    x     = "Dimension (# assets)",
+    y     = "Volatility"
+  )
+
+# Boxplots of Mean Return by dimension
+ggplot(results_b1, aes(x = as.factor(dimension), y = mean_return, fill = portfolio)) +
+  geom_boxplot(alpha = 0.6) +
+  labs(
+    title = "Distribution of In-sample Mean Return",
+    x     = "Dimension (# assets)",
+    y     = "Mean Return (weekly)"
+  )
+
+
+```
+
+#### 1.2. Impact of variances given dimension and correlation structure
+
+We now analyze the Impact of variances, given dimension and correlation structure. The set of plots illustrates how increasing asset-level variances affects portfolio volatility. This is operationalized by scaling the asset variances uniformly via a “scale factor”, applied equally across all assets in the universe. The correlation structure is fixed and hence portfolio weights remain unchanged, given the scalar factor multiply all asset variances.
+
+The first two plots show how portfolio volatility responds to increases in the variance scaling factor under the MinVol and MaxDiv strategies, respectively. In this exercise, any increase in individual asset variances leads to a mechanical and proportional increase in portfolio-level variance, given the correlation structure and the scalar factor (relative variances remain unchanges). This is evident in the monotonic rise in the distribution of portfolio volatility across scale factors in both strategies. The dispersion increases in portfolios that include fewer assets, reflecting a reduced ability to diversify away the idiosyncratic risk as variance increases. The third plot shows that mean returns remain constant across scale factors, as expected, only the variances are scaled, not the return process. 
+
+```{r, message=FALSE, warning=FALSE}
+
+dims_b2 <- c(5,10,25)
+num_subsets_b2 <- 100
+scale_factors_b2 <- c(0.5,1,1.5,2)
+results_b2 <- analyze_variance_impact(rets, dims_b2, 
+                                      num_subsets_b2, 
+                                      scale_factors_b2)
+
+
+```
+
+
+```{r, message=FALSE, warning=FALSE}
+
+
+# Plot distribution of final portfolio vol for each scale_factor
+res_minvol <- subset(results_b2, portfolio == "minvol")
+
+ggplot(res_minvol, aes(x = factor(scale_factor), y = vol, fill = factor(dimension))) +
+  geom_boxplot() +
+  labs(
+    title = "MinVol: Distribution of Vol by Scale Factor",
+    x     = "Scale Factor",
+    y     = "Portfolio Vol"
+  )
+
+
+res_maxdiv <- subset(results_b2, portfolio == "maxdiv")
+
+ggplot(res_maxdiv, aes(x = factor(scale_factor), y = vol, fill = factor(dimension))) +
+  geom_boxplot() +
+  labs(
+    title = "MaxDiv: Distribution of Vol by Scale Factor",
+    x     = "Scale Factor",
+    y     = "Portfolio Vol"
+  )
+
+
+# Aggregate mean return by (portfolio, dimension, scale_factor)
+avg_all <- results_b2 %>%
+  group_by(portfolio, dimension, scale_factor) %>%
+  summarize(mean_ret = mean(mean_return), .groups = "drop")
+
+# Plot both in one figure using facet
+ggplot(avg_all, aes(x = scale_factor, y = mean_ret,
+                    color = factor(dimension), group = dimension)) +
+  geom_line(size = 1.2) +
+  geom_point(size = 2) +
+  facet_wrap(~ portfolio) +
+  labs(
+    title = "Mean Return Across Scale Factors",
+    subtitle = "Separated by Portfolio Type (Min-Vol vs Max-Div)",
+    x = "Scale Factor (std dev multiplier)",
+    y = "Average Mean Return",
+    color = "Dimension"
+  ) +
+  theme_minimal()
+```
+
+#### 1.3. Impact of correlation given dimension and variances
+
+
+The first figure illustrates how the volatility of the minvol portfolio evolves with increasing equicorrelation levels ($\rho$) for different portfolio sizes. Each panel represents a different portfolio dimension (d=5,10,25), and the bold line highlights the average volatility across multiple random subsets. As expected, portfolio volatility increases monotonically with the level of correlation. This reflects that higher correlation reduces diversification benefits: when assets become more correlated, the ability to cancel out individual risks declines, leading to a rise in total portfolio risk. Importantly, portfolios with more assets (d=25)  achieve lower volatility compared to portfolios with a fewer assets. However, as the equicorrelation increases, the portfolio variance among all portfolio dimensions becomes closer.
+
+The second figure presents the same structure but focuses on the maxdiv portfolio. The pattern is qualitatively similar: portfolio volatility increases with correlation, and larger portfolios again benefit from lower volatility levels. However, compared to minvol, the maxdiv portfolios tend to exhibit slightly higher average volatilities. This is consistent with the objective of the maxdiv strategy, which does not minimize volatility directly, but instead maximizes the ratio of weighted average asset volatility to overall portfolio volatility. 
+
+The third figure shifts focus to the mean return of the portfolios as a function of correlation. For maxdiv portfolios, the mean return remains unchanged across all levels of correlation. This behavior aligns with theory: under the assumption of equicorrelation, it's possible to prove that the maxdiv weights are invariant to $\rho$. In contrast, the minvol portfolios show a mild but consistent decline in mean return as correlation increases, especially in smaller dimensions. 
+
+
+```{r, message=FALSE, warning=FALSE}
+
+dims_b3 <- c(5,10,25)
+num_subsets_b3 <- 100
+corr_values_b3 <- seq(0.1, 0.9, by=0.1)
+
+results_b3 <- analyze_correlation_impact(rets, dims = dims_b3,
+                                         num_subsets = num_subsets_b3, 
+                                         corr_values = corr_values_b3)
+
+```
+
+
+```{r, message=FALSE, warning=FALSE}
+
+
+res_minvol <- results_b3 %>% filter(portfolio == "minvol")
+
+avg_minvol <- res_minvol %>%
+  group_by(dimension, correlation) %>%
+  summarize(mean_vol = mean(vol), .groups = "drop")
+
+ggplot(res_minvol, aes(x = correlation, y = vol,
+                       group = interaction(dimension, subset_id))) +
+  geom_line(alpha = 0.5, color = "steelblue") +
+  geom_point(alpha = 0.5, color = "steelblue") +
+  geom_line(data = avg_minvol,
+            aes(x = correlation, y = mean_vol, group = dimension),
+            color = "black", linewidth = 1.2) +
+  facet_wrap(~ dimension, scales = "free_y") +
+  labs(
+    title = "Min-Vol: Portfolio Volatility vs Correlation",
+    subtitle = "Each panel is a dimension, bold line is the average across simulations",
+    x = "Correlation (rho)",
+    y = "Portfolio Volatility"
+  ) +
+  theme_minimal()
+
+
+res_maxdiv <- results_b3 %>% filter(portfolio == "maxdiv")
+
+avg_maxdiv <- res_maxdiv %>%
+  group_by(dimension, correlation) %>%
+  summarize(mean_vol = mean(vol), .groups = "drop")
+
+ggplot(res_maxdiv, aes(x = correlation, y = vol,
+                       group = interaction(dimension, subset_id))) +
+  geom_line(alpha = 0.5, color = "darkorange") +
+  geom_point(alpha = 0.5, color = "darkorange") +
+  geom_line(data = avg_maxdiv,
+            aes(x = correlation, y = mean_vol, group = dimension),
+            color = "black", linewidth = 1.2) +
+  facet_wrap(~ dimension, scales = "free_y") +
+  labs(
+    title = "Max-Div: Portfolio Volatility vs Correlation",
+    subtitle = "Each panel is a dimension, bold line is the average across simulations",
+    x = "Correlation (rho)",
+    y = "Portfolio Volatility"
+  ) +
+  theme_minimal()
+
+
+
+
+# Aggregate: mean return for each (portfolio, dimension, correlation)
+avg_mean <- results_b3 %>%
+  group_by(portfolio, dimension, correlation) %>%
+  summarize(mean_ret = mean(mean_return), .groups = "drop")
+
+# Simple, clean line plot
+ggplot(avg_mean, aes(x = correlation, y = mean_ret, color = factor(dimension))) +
+  geom_line(size = 1.2) +
+  geom_point(size = 2) +
+  facet_wrap(~ portfolio) +
+  expand_limits(y = c(min(avg_mean$mean_ret) - 0.001, max(avg_mean$mean_ret) + 0.001)) +
+  labs(
+    title = "Mean Return vs Correlation",
+    subtitle = "Averaged across subsets, by dimension",
+    x = "Correlation (rho)",
+    y = "Mean Return",
+    color = "Dimension"
+  ) +
+  theme_minimal()
+
+
+
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
