@@ -119,7 +119,7 @@ res_minvol <- subset(results_b2, portfolio == "minvol")
 ggplot(res_minvol, aes(x = factor(scale_factor), y = vol, fill = factor(dimension))) +
   geom_boxplot() +
   labs(
-    title = "MinVol: Distribution of Vol by Scale Factor",
+    title = "Minvol: Distribution of Vol by Scale Factor",
     x     = "Scale Factor",
     y     = "Portfolio Vol"
   )
@@ -130,7 +130,7 @@ res_maxdiv <- subset(results_b2, portfolio == "maxdiv")
 ggplot(res_maxdiv, aes(x = factor(scale_factor), y = vol, fill = factor(dimension))) +
   geom_boxplot() +
   labs(
-    title = "MaxDiv: Distribution of Vol by Scale Factor",
+    title = "Maxdiv: Distribution of Vol by Scale Factor",
     x     = "Scale Factor",
     y     = "Portfolio Vol"
   )

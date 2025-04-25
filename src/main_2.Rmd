@@ -1,0 +1,480 @@
+---
+title: "MATH60633A – TP2"
+output: html_document
+date: "April, 2025"
+---
+
+**Project 1: Asset Management**
+
+
+
+
+## FROM HERE
+
+
+### 2. In-sample uncertainty
+
+
+```{r, message=FALSE, warning=FALSE}
+
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(mvtnorm) 
+library(MASS)    
+library(RiskPortfolios) 
+library(Matrix) 
+library(here)
+library(fitHeavyTail) 
+library(gt)
+library(tidyverse)
+library(PerformanceAnalytics)
+
+source(here('src','core_functions.R'))
+source(here('src','core_functions_2.R'))
+
+set.seed(1234)
+
+load(here("data", "FTSE_const_rets.rda"))
+print(rets[1:5, 1:5])
+
+
+```
+#### 2.1 Gaussian model
+
+This section first investigate the impact of parameter uncertainty in the in-sample performance using a Gaussian model calibrated on the data. The table below presents 95% confidence intervals computed via Gaussian bootstrap simulations (B=1000) for two portfolio strategies: minvol and maxdiv.
+
+Starting with the mean, the maxdiv portfolio exhibits a 95% confidence interval ranging from approximately 0.127% to 0.575% per week, with a median value of 0.361%. In contrast, the minvol portfolio shows an expected return with a CI of 0.134% to 0.542%, and a median of 0.337%. Although the minvol return is lower on average, the intervals for both portfolios do overlap somewhat, suggesting that the difference in returns may not be statistically significant depending on the context and risk preferences.
+
+Regarding volatility, the maxdiv portfolio is associated with a CI between 1.32% and 1.67%, and a median of 1.50%, whereas the minvol portfolio shows lower distribution of risk, with volatility bounded between 1.20% and 1.46%, and a median of 1.33%. This result aligns with the fundamental objective of each strategy: minvol is designed to reduce risk exposure, and this is clearly reflected in its tighter and lower volatility estimates.
+
+The Sharpe ratio, which measures return per unit of risk, provides further insight into risk-adjusted performance. For maxdiv, the Sharpe ratio falls between 0.087 and 0.386, with a median of 0.241. Minvol, on the other hand, displays a slightly more favorable distribution, with a CI of 0.099 to 0.416, and a median of 0.251. This suggests that while maxdiv may yield higher raw returns, minvol offers marginally better consistency in risk-adjusted performance, with slightly less uncertainty in the distribution of outcomes.
+
+Overall, these Gaussian bootstrap-based confidence intervals suggest that both portfolios are expected to deliver positive returns and Sharpe ratios, but with differing risk-return tradeoffs. The maxdiv strategy tends to achieve higher average returns but also comes with higher and more variable risk, while the minvol strategy offers more stable, lower-risk performance with comparable risk-adjusted returns. 
+
+
+```{r, message=FALSE, warning=FALSE}
+
+B_sim <- 1000
+
+# Gaussian model
+results_gauss <- run_bootstrap_simulation(rets, model_type = "gaussian", B = B_sim)
+
+```
+
+```{r, message=FALSE, warning=FALSE}
+
+quant_gauss <- results_gauss %>%                             # original wide data
+  dplyr::select(portfolio, mean, vol, sharpe) %>%     # keep the 3 metrics
+  tidyr::pivot_longer(-portfolio,                            # long format
+                      names_to  = "metric",
+                      values_to = "value") %>%              
+  dplyr::group_by(portfolio, metric) %>%                     # group by BOTH
+  dplyr::summarise(                                          # three required quantiles
+    q025 = quantile(value, 0.025, na.rm = TRUE),
+    q500 = quantile(value, 0.500, na.rm = TRUE),   # median
+    q975 = quantile(value, 0.975, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+print(quant_gauss)
+
+
+
+```
+
+```{r, message=FALSE, warning=FALSE}
+
+calculate_portfolio_se <- function(results_df) {
+  results_df %>%
+    filter(complete.cases(mean_return, vol, sharpe)) %>%
+    group_by(portfolio) %>%
+    summarise(
+      across(c(mean_return, vol, sharpe),
+             list(mean = ~mean(.x, na.rm = TRUE), se = ~sd(.x, na.rm = TRUE))),
+      n_sim_valid = n(),
+      .groups = "drop"
+    ) %>%
+    rename_with(~gsub("_mean", "_avg", .x), contains("_mean"))
+}
+
+summary_gauss <- calculate_portfolio_se(results_gauss)
+
+print("Gaussian Model Summary")
+print(summary_gauss) 
+
+
+```
+
+
+```{r, message=FALSE, warning=FALSE}
+
+if (exists("results_gauss") && is.data.frame(results_gauss) && nrow(results_gauss) > 0) {
+  
+  # Reshape Gaussian results
+  results_long_gauss <- results_gauss %>%
+    dplyr::select(portfolio, mean_return, vol, sharpe) %>%
+    dplyr::filter(complete.cases(mean_return, vol, sharpe)) %>%
+    tidyr::pivot_longer(cols = c(mean_return, vol, sharpe),
+                        names_to = "metric",
+                        values_to = "value") %>%
+    dplyr::mutate(metric = factor(metric, levels = c("mean_return", "vol", "sharpe"),
+                                  labels = c("Mean Return", "Volatility", "Sharpe Ratio")))
+  
+  if (nrow(results_long_gauss) > 0) {
+    # Density Plots (Gaussian) 
+    plot_title_density_g <- "Distribution of Performance Metrics (Gaussian Model)"
+    plot_subtitle_density_g <- paste("Based on", B_sim, "simulations. Dashed lines: Medians.")
+    
+    med_gauss <- results_long_gauss %>%                # already long format
+    dplyr::group_by(portfolio, metric) %>%           # both facets
+    dplyr::summarise(med = median(value, na.rm = TRUE),
+                   .groups = "drop")
+
+    # Density plot + dotted median line 
+    p1_g <- ggplot(results_long_gauss, aes(x = value, fill = portfolio)) +
+      geom_density(alpha = 0.6) +
+      facet_wrap(~ metric, scales = "free") +
+      
+      geom_vline(data = med_gauss,                       
+                 aes(xintercept = med, colour = portfolio),
+                 linetype = "dotted", size = 1,
+                 inherit.aes = FALSE) +
+      
+      scale_fill_brewer(palette = "Set1",
+                        name = "Portfolio (Simulated)") +
+      scale_colour_brewer(palette = "Set1", guide = "none") +  
+      labs(title    = plot_title_density_g,
+           subtitle = plot_subtitle_density_g,
+           x = "Metric Value", y = "Density") +
+      theme_minimal() +
+      theme(legend.position = "bottom",
+            axis.title.y = element_blank(),      
+            axis.text.y  = element_blank(),      
+            axis.ticks.y = element_blank() )
+    
+    print(p1_g)
+    
+    # Box Plots (Gaussian) 
+    plot_title_boxplot_g <- "Comparison of Performance Distributions (Gaussian Model)"
+    plot_subtitle_boxplot_g <- paste("Boxes show distribution over", B_sim)
+    
+    p3_g <- ggplot(results_long_gauss, aes(x = portfolio, y = value, fill = portfolio)) +
+      geom_boxplot(alpha = 0.7, outlier.shape = NA) +
+      facet_wrap(~ metric, scales = "free_y") +
+      scale_fill_brewer(palette = "Set1") +
+      labs(title = plot_title_boxplot_g, subtitle = plot_subtitle_boxplot_g,
+           x = "Portfolio Strategy", y = "Metric Value") +
+      theme_minimal() +
+      theme(legend.position = "none", axis.title.y = element_blank())
+    print(p3_g)
+    
+  } else {
+    warning("No valid Gaussian data remaining after filtering/pivoting for density/box plots.", call. = FALSE)
+  } # End check for results_long_gauss
+  
+  
+  # Scatter Plot (Gaussian) 
+  plot_title_scatter_g <- "In-Sample Risk-Return Scatter Plot (Gaussian Model)"
+  plot_subtitle_scatter_g <- paste("Cloud shows", B_sim)
+  
+  scatter_data_g <- results_gauss %>% filter(complete.cases(vol, mean_return))
+  if(nrow(scatter_data_g) > 0) {
+    p2_g <- ggplot(scatter_data_g, aes(x = vol, y = mean_return, color = portfolio)) +
+      geom_point(alpha = 0.3, size = 1.5) + # Simulation cloud
+      scale_color_brewer(palette = "Set1", name = "Portfolio Strategy") +
+      labs(title = plot_title_scatter_g, subtitle = plot_subtitle_scatter_g,
+           x = "In-Sample Volatility", y = "In-Sample Mean") +
+      theme_minimal() +
+      guides(color = guide_legend(override.aes = list(alpha = 1, size = 3)))
+    print(p2_g)
+  } 
+  
+} 
+
+
+```
+
+
+
+#### 2.2 Student-t model
+
+This subsections considers the same approach as in subsection 2.1 but with a Student-t model. The table displays the 95% bootstrap confidence intervals for the mean return, volatility, and Sharpe ratio under the Student-t model, across two portfolios: maxdiv and minvol. Starting with the mean, the maxdiv portfolio shows a 95% confidence interval ranging from approximately 0.040% to 0.533% per week, with a median of 0.300%. For the minvol strategy, the interval is tighter and lower, from 0.031% to 0.487%, with a median of 0.268%. These results suggest that, even under the Student-t model, the maxdiv strategy is expected to yield slightly higher returns on average, although the distributions are relatively close. 
+
+Turning to volatility and risk-adjusted performance,  The maxdiv portfolio exhibits a higher volatility profile, with a 95% confidence interval ranging from 1.45% to 1.94%, and a median of 1.67%, while the minvol strategy shows lower volatility, between 1.33% and 1.74%, with a median of 1.52%. These estimates confirm that minvol fulfills its core objective of risk reduction, and notably, the volatility intervals under the Student-t distribution remain quite stable and closely aligned with those observed under the Gaussian model. In terms of Sharpe ratio, maxdiv spans a wider interval—from 0.024 to 0.332, with a median of 0.179—while minvol displays a tighter and more favorable range of 0.195 to 0.336, with a median of 0.175.
+
+Comparing the Gaussian and Student-t bootstrap results reveals several important insights about how distributional assumptions affect perceived performance. The Student-t model consistently yields wider and more conservative confidence intervals. The comparison between the two models shows how distributional assumptions materially affect performance evaluation. Across all metrics, the Student-t model delivers more conservative estimates, especially for mean return and Sharpe ratio. This reflects the Student-t’s ability to capture heavy tails, thereby accounting for rare but impactful extreme events. In contrast, the Gaussian model, by assuming thin tails, overstates average performance and compresses confidence interval.
+
+
+```{r, message=FALSE, warning=FALSE}
+
+B_sim <- 1000
+
+# Student-t Model
+results_t <- run_bootstrap_simulation(rets, model_type = "student_t",
+                                      B = B_sim, seed = 456)
+```
+
+```{r, message=FALSE, warning=FALSE}
+
+quant_t <- results_t %>%                             # original wide data
+  dplyr::select(portfolio, mean_return, vol, sharpe) %>%     # keep the 3 metrics
+  tidyr::pivot_longer(-portfolio,                            # long format
+                      names_to  = "metric",
+                      values_to = "value") %>%              
+  dplyr::group_by(portfolio, metric) %>%                     # group by BOTH
+  dplyr::summarise(                                          # three required quantiles
+    q025 = quantile(value, 0.025, na.rm = TRUE),
+    q500 = quantile(value, 0.500, na.rm = TRUE),   # median
+    q975 = quantile(value, 0.975, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+print(quant_t)
+
+```
+
+```{r, message=FALSE, warning=FALSE}
+
+calculate_portfolio_se <- function(results_df) {
+  results_df %>%
+    filter(complete.cases(mean_return, vol, sharpe)) %>%
+    group_by(portfolio) %>%
+    summarise(
+      across(c(mean_return, vol, sharpe),
+             list(mean = ~mean(.x, na.rm = TRUE), se = ~sd(.x, na.rm = TRUE))),
+      n_sim_valid = n(),
+      .groups = "drop"
+    ) %>%
+    rename_with(~gsub("_mean", "_avg", .x), contains("_mean"))
+}
+
+summary_t <- calculate_portfolio_se(results_t)
+
+print("Studen-t Model Summary")
+print(summary_t) 
+
+```
+
+
+```{r, message=FALSE, warning=FALSE}
+
+
+if (exists("results_t") && is.data.frame(results_t) && nrow(results_t) > 0) {
+  # Reshape Student-t results 
+  results_long_t <- results_t %>%
+    dplyr::select(portfolio, mean_return, vol, sharpe) %>%
+    dplyr::filter(complete.cases(mean_return, vol, sharpe)) %>%
+    tidyr::pivot_longer(cols = c(mean_return, vol, sharpe),
+                        names_to = "metric",
+                        values_to = "value") %>%
+    dplyr::mutate(metric = factor(metric, levels = c("mean_return", "vol", "sharpe"),
+                                  labels = c("Mean Return", "Volatility", "Sharpe Ratio")))
+  
+  if (nrow(results_long_t) > 0) {
+    # Density Plots (Student-t) 
+    plot_title_density_t <- "Distribution of Performance Metrics (d=50, Student-t Model)"
+    plot_subtitle_density_t <- paste("Based on", B_sim, "simulations.", round(fit_t_check$nu, 2), ". Dashed lines are original point estimates.")
+    
+    med_t <- results_long_t %>%                # already long format
+    dplyr::group_by(portfolio, metric) %>%           # both facets
+    dplyr::summarise(med = median(value, na.rm = TRUE),
+                   .groups = "drop")
+
+    # Density plot + dotted median line
+    p1_t <- ggplot(results_long_t, aes(x = value, fill = portfolio)) +
+      geom_density(alpha = 0.6) +
+      facet_wrap(~ metric, scales = "free") +
+      
+      geom_vline(data = med_t,                       
+                 aes(xintercept = med, colour = portfolio),
+                 linetype = "dotted", size = 1,
+                 inherit.aes = FALSE) +
+      
+      scale_fill_brewer(palette = "Set1",
+                        name = "Portfolio (Simulated)") +
+      scale_colour_brewer(palette = "Set1", guide = "none") +  
+      labs(title    = plot_title_density_t,
+           subtitle = plot_subtitle_density_t,
+           x = "Metric Value", y = "Density") +
+      theme_minimal() +
+      theme(legend.position = "bottom",
+            axis.title.y = element_blank(),      
+            axis.text.y  = element_blank(),      
+            axis.ticks.y = element_blank() )
+    
+    print(p1_t)
+    
+    #  Box Plots (Student-t) 
+    plot_title_boxplot_t <- "Comparison of Performance Distributions (d=50, Student-t Model)"
+    plot_subtitle_boxplot_t <- paste("Boxes show distribution over", B_sim, "simulations.", round(fit_t_check$nu, 2), ". Diamonds are original point estimates.")
+    
+    p3_t <- ggplot(results_long_t, aes(x = portfolio, y = value, fill = portfolio)) +
+      geom_boxplot(alpha = 0.7, outlier.shape = NA) +
+      facet_wrap(~ metric, scales = "free_y") +
+      scale_fill_brewer(palette = "Set1") +
+      labs(title = plot_title_boxplot_t, subtitle = plot_subtitle_boxplot_t,
+           x = "Portfolio Strategy", y = "Metric Value") +
+      theme_minimal() +
+      theme(legend.position = "none", axis.title.y = element_blank())
+    print(p3_t)
+    
+  } 
+  
+  
+  # --- Plot 2.2: Scatter Plot (Student-t) ---
+  plot_title_scatter_t <- "In-Sample Risk-Return Scatter Plot (d=50, Student-t Model)"
+  plot_subtitle_scatter_t <- paste("Cloud shows", B_sim, "simulations.", round(fit_t_check$nu, 2), ". Diamonds are original point estimates.")
+  
+  scatter_data_t <- results_t %>% filter(complete.cases(vol, mean_return))
+  if(nrow(scatter_data_t) > 0) {
+    p2_t <- ggplot(scatter_data_t, aes(x = vol, y = mean_return, color = portfolio)) +
+      geom_point(alpha = 0.3, size = 1.5) + # Simulation cloud
+      scale_color_brewer(palette = "Set1", name = "Portfolio Strategy") +
+      labs(title = plot_title_scatter_t, subtitle = plot_subtitle_scatter_t,
+           x = "In-Sample Volatility", y = "In-Sample Mean") +
+      theme_minimal() +
+      guides(color = guide_legend(override.aes = list(alpha = 1, size = 3)))
+    print(p2_t)
+  } 
+  
+}
+
+
+```
+
+
+#### 2.3 In-sample shrinkage approaches
+
+We now analyse the impact of robustification techniques. In particular, we compare the results considering the sample covariance matrix agains the results using two alternative shrinkage estimators from the package RiskPortfolios: 1- Ledoit-Wolf estimator (see Ledoit and Wolf (2003)); 2- Factor analysis with a total of 3 factors (see Harman (1976)).
+
+First, to provide a visualization about what these alternative estimators are doing, we plot three heatmaps, one for each of the covariance matrix estimator. These heatmaps consider the entire sample period and all 50 assets. The sample covariance matrix heatmap reveals a highly detailed and noisy structure, where the clustering patterns appear dense and full of minor variations. This reflects the fact that the sample covariance estimator uses only historical data without any form of regularization. While the heatmap retains all the empirical relationships, it also retains much of the noise, which can lead to unstable portfolio optimization results.
+
+The Ledoit-Wolf covariance matrix heatmap, by contrast, exhibits smoother transitions and more structured block patterns. This estimator applies shrinkage toward a structured target, which reduces estimation error and enhances numerical stability. The heatmap visually reflects this improvement: the noise is visibly reduced, and asset clusters emerge. The result is a more stable and reliable covariance estimate, especially valuable in high-dimensional settings.
+
+The factor covariance matrix heatmap shows an even more pronounced level of shrinkage and structure. Instead of estimating pairwise covariances directly, this approach models asset covariances via exposures to a small number of underlying factors. This structure implies that much of the correlation is being captured through common latent components, and idiosyncratic relationships are downweighted or ignored.
+
+
+```{r, message=FALSE, warning=FALSE}
+
+heatmap(cov(rets), 
+        main = "Sample covariance matrix heatmap")
+heatmap(covEstimation(rets, control = list(type = 'lw')),  
+        main = "Ledoit-Wolf covariance matrix estimator heatmap")
+heatmap(RiskPortfolios::covEstimation(rets, control = list(type = 'factor', K = 3)), 
+        main = "Factor covariance matrix estimator heatmap")
+
+
+```
+
+We now investigate the in-sample impact of different covariance matrix estimators on the performance of optimized portfolios Using bootstrap resampling (B = 1000), we evaluate two portfolio strategies—minimum volatility (minvol) and maximum diversification (maxdiv) .The first boxplot shows that shrinkage reduces volatility dispersion for both portfolios. The sample covariance produces wider spreads and more extreme outliers, particularly for minvol, where the upper tail is visibly large. In contrast, both Ledoit-Wolf and the factor model result in significantly tighter and lower volatility estimates, implying more stable risk profiles. This is expected: shrinkage reduces estimation error by pulling extreme covariance entries toward a structured prior, leading to greater robustness in the optimized weights.
+
+Importantly, for maxdiv, the LW estimator produces the lowest volatility on average, while the factor model stabilizes but with a slightly higher level. This may be due to the factor model ignoring some idiosyncratic variation. For minvol, the pattern is similar: sample covariance has more noise, LW delivers lower average volatility, and the factor model provides moderate stability.
+
+In terms of means, the picture changes. The sample estimator tends to produce higher median returns but also exhibits greater dispersion, especially for maxdiv. This suggests that optimizing with the raw sample covariance matrix may lead to more aggressive portfolios, reflecting both upside potential and downside risk due to overfitting noise in the sample. In contrast, Ledoit-Wolf and factor-based portfolios yield more conservative return profiles, with tighter distributions centered around slightly lower means.  
+
+These results reaffirm that shrinkage estimators improve stability, reducing the risk of overfitting and leading to more reliable portfolio construction, especially when asset dimensionality is high or the sample size is limited. We expect that these results should be even more pronounce when we consider out-of-sample results.
+
+
+```{r, message=FALSE, warning=FALSE}
+
+B   <- 1000             
+res <- run_boot(rets, B)
+
+summary_tab <- res |>
+  group_by(portfolio, cov_est) |>
+  summarise(across(c(mean, vol, SR),
+                   list(mu = mean, se = sd), .names = "{.col}_{.fn}"),
+            .groups = "drop")
+
+ggplot(res, aes(x = cov_est, y = vol, fill = cov_est)) +
+  geom_boxplot(alpha = .65, outlier.shape = 1) +
+  facet_wrap(~ portfolio, scales = "free_y") +
+  scale_fill_brewer(palette = "Set1", guide = "none") +
+  labs(title = "In-sample shrinkage effect",
+       subtitle = paste0("Bootstrapped (B = ", B, ") — Sample vs Ledoit-Wolf vs Factor"),
+       x = NULL, y = "Volatility") +
+  theme_minimal(base_size = 13)
+
+ggplot(res, aes(x = cov_est, y = mean, fill = cov_est)) +
+  geom_boxplot(alpha = .65, outlier.shape = 1) +
+  facet_wrap(~ portfolio, scales = "free_y") +
+  scale_fill_brewer(palette = "Set1", guide = "none") +
+  labs(title = "In-sample shrinkage effect",
+       subtitle = paste0("Bootstrapped (B = ", B, ") — Ledoit-Wolf vs Factor vs Sample"),
+       x = NULL, y = "Mean") +
+  theme_minimal(base_size = 13)
+
+```
+
+
+#### 2.4 Compare different resampling approaches
+
+In this analysis, we explore how different resampling strategies impact the construction and stability of optimized portfolios when using the sample covariance matrix estimator. We consider three resampling schemes. First, the iid bootstrap, which resamples rows independently with replacement. Second, the block bootstrap, which resamples consecutive blocks of returns to preserve dependence. In this method, we consider the approach Politis and Romano (1994) and use the package tseries with option type of stationarity. Finally, the third method is Gaussian resampling, which generates synthetic returns from a multivariate normal distribution calibrated to the sample mean and covariance.
+
+The weights violin plots illustrate the distribution of portfolio weights across resamples for each (resample scheme × portfolio) pair. Across both minvol and maxdiv, iid resampling consistently produces the widest distribution of weights. This indicates that weights are highly sensitive to random resampling of return rows. Block bootstrap, which retains temporal structure, and Gaussian bootstrap lead to slightly tighter weight distributions. Moreover, the violin plots of maxdiv, they tend to be taller and wider than those of minvol. This reflects that weights in maxdiv vary more across bootstrap samples. In minvol, portfolios often concentrate on a few low-volatility assets.
+
+The plots for the dispersion of mean, volatility and Sharpe ratio summarise how results change according to each resampling scheme. The iid bootstraped portfolios deliver the biggest estimation uncertainty, as evidenced by the tallest boxes and the single lowest Sharpe outliers. Block bootstrap generally produces shorter vertical ranges for both mean and Sharpe, suggesting that once serial dependence is preserved, the estimator is more stable than under iid resampling.
+
+
+
+
+
+```{r, message=FALSE, warning=FALSE}
+
+boot_out <- boot_portfolio_stats(rets, B = 200)
+
+w_long <- purrr::imap_dfr(boot_out$weights_raw, ~
+                            as.data.frame(.x) |>
+                            pivot_longer(everything(), values_to = "w") |>
+                            mutate(tag = .y))
+
+metric_long <- dplyr::bind_rows(boot_out$metrics_raw) |>
+  pivot_longer(c(mean, vol, sharpe),
+               names_to = "stat",
+               values_to = "value")
+
+
+p_weights <- ggplot(w_long, aes(tag, w, fill = tag)) +
+  geom_violin(trim = FALSE, alpha = .6) +
+  labs(title = "Weight dispersion", x = NULL, y = "Weight") +
+  theme_minimal(base_size = 12) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "none")
+
+p_metrics <- ggplot(metric_long, aes(tag, value, fill = tag)) +
+  geom_violin(trim = FALSE, alpha = .6) +
+  facet_wrap(~ stat, scales = "free_y") +
+  labs(title = "Dispersion of mean, volatility, Sharpe",
+       x = NULL, y = NULL) +
+  theme_minimal(base_size = 12) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "none")
+
+p_weights
+p_metrics
+
+p_metrics_box <- ggplot(metric_long, aes(tag, value, fill = tag)) +
+  geom_boxplot(outlier.alpha = .25, width = .6) +
+  facet_wrap(~ stat, scales = "free_y") +
+  labs(title = "Dispersion of mean, volatility, Sharpe (box plot)",
+       x = NULL, y = NULL) +
+  theme_minimal(base_size = 12) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "none")
+
+p_metrics_box
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
