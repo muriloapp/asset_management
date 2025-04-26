@@ -87,10 +87,10 @@ print(quant_gauss)
 
 calculate_portfolio_se <- function(results_df) {
   results_df %>%
-    filter(complete.cases(mean_return, vol, sharpe)) %>%
+    filter(complete.cases(mean, vol, sharpe)) %>%
     group_by(portfolio) %>%
     summarise(
-      across(c(mean_return, vol, sharpe),
+      across(c(mean, vol, sharpe),
              list(mean = ~mean(.x, na.rm = TRUE), se = ~sd(.x, na.rm = TRUE))),
       n_sim_valid = n(),
       .groups = "drop"
@@ -113,12 +113,12 @@ if (exists("results_gauss") && is.data.frame(results_gauss) && nrow(results_gaus
   
   # Reshape Gaussian results
   results_long_gauss <- results_gauss %>%
-    dplyr::select(portfolio, mean_return, vol, sharpe) %>%
-    dplyr::filter(complete.cases(mean_return, vol, sharpe)) %>%
-    tidyr::pivot_longer(cols = c(mean_return, vol, sharpe),
+    dplyr::select(portfolio, mean, vol, sharpe) %>%
+    dplyr::filter(complete.cases(mean, vol, sharpe)) %>%
+    tidyr::pivot_longer(cols = c(mean, vol, sharpe),
                         names_to = "metric",
                         values_to = "value") %>%
-    dplyr::mutate(metric = factor(metric, levels = c("mean_return", "vol", "sharpe"),
+    dplyr::mutate(metric = factor(metric, levels = c("mean", "vol", "sharpe"),
                                   labels = c("Mean Return", "Volatility", "Sharpe Ratio")))
   
   if (nrow(results_long_gauss) > 0) {
@@ -178,9 +178,9 @@ if (exists("results_gauss") && is.data.frame(results_gauss) && nrow(results_gaus
   plot_title_scatter_g <- "In-Sample Risk-Return Scatter Plot (Gaussian Model)"
   plot_subtitle_scatter_g <- paste("Cloud shows", B_sim)
   
-  scatter_data_g <- results_gauss %>% filter(complete.cases(vol, mean_return))
+  scatter_data_g <- results_gauss %>% filter(complete.cases(vol, mean))
   if(nrow(scatter_data_g) > 0) {
-    p2_g <- ggplot(scatter_data_g, aes(x = vol, y = mean_return, color = portfolio)) +
+    p2_g <- ggplot(scatter_data_g, aes(x = vol, y = mean, color = portfolio)) +
       geom_point(alpha = 0.3, size = 1.5) + # Simulation cloud
       scale_color_brewer(palette = "Set1", name = "Portfolio Strategy") +
       labs(title = plot_title_scatter_g, subtitle = plot_subtitle_scatter_g,
@@ -218,7 +218,7 @@ results_t <- run_bootstrap_simulation(rets, model_type = "student_t",
 ```{r, message=FALSE, warning=FALSE}
 
 quant_t <- results_t %>%                             # original wide data
-  dplyr::select(portfolio, mean_return, vol, sharpe) %>%     # keep the 3 metrics
+  dplyr::select(portfolio, mean, vol, sharpe) %>%     # keep the 3 metrics
   tidyr::pivot_longer(-portfolio,                            # long format
                       names_to  = "metric",
                       values_to = "value") %>%              
@@ -238,10 +238,10 @@ print(quant_t)
 
 calculate_portfolio_se <- function(results_df) {
   results_df %>%
-    filter(complete.cases(mean_return, vol, sharpe)) %>%
+    filter(complete.cases(mean, vol, sharpe)) %>%
     group_by(portfolio) %>%
     summarise(
-      across(c(mean_return, vol, sharpe),
+      across(c(mean, vol, sharpe),
              list(mean = ~mean(.x, na.rm = TRUE), se = ~sd(.x, na.rm = TRUE))),
       n_sim_valid = n(),
       .groups = "drop"
@@ -260,21 +260,34 @@ print(summary_t)
 ```{r, message=FALSE, warning=FALSE}
 
 
+if (!exists("estimated_nu")) {
+     # Attempt to calculate it now if 'rets' is available
+     if(exists("rets") && requireNamespace("fitHeavyTail", quietly=TRUE)) {
+        fit_t_check <- tryCatch(fitHeavyTail::fit_mvt(na.omit(rets)), error = function(e) NULL)
+        if (!is.null(fit_t_check) && !is.null(fit_t_check$nu)) {
+           estimated_nu <- round(fit_t_check$nu, 2)
+           message(paste("Calculated estimated_nu for subtitle:", estimated_nu))
+        } else { estimated_nu <- NA }
+     } else { estimated_nu <- NA }
+}
+nu_subtitle_part <- ifelse(is.na(estimated_nu) || is.null(estimated_nu), "(nu not found)", paste("Est. nu =", estimated_nu))
+
+
 if (exists("results_t") && is.data.frame(results_t) && nrow(results_t) > 0) {
   # Reshape Student-t results 
   results_long_t <- results_t %>%
-    dplyr::select(portfolio, mean_return, vol, sharpe) %>%
-    dplyr::filter(complete.cases(mean_return, vol, sharpe)) %>%
-    tidyr::pivot_longer(cols = c(mean_return, vol, sharpe),
+    dplyr::select(portfolio, mean, vol, sharpe) %>%
+    dplyr::filter(complete.cases(mean, vol, sharpe)) %>%
+    tidyr::pivot_longer(cols = c(mean, vol, sharpe),
                         names_to = "metric",
                         values_to = "value") %>%
-    dplyr::mutate(metric = factor(metric, levels = c("mean_return", "vol", "sharpe"),
+    dplyr::mutate(metric = factor(metric, levels = c("mean", "vol", "sharpe"),
                                   labels = c("Mean Return", "Volatility", "Sharpe Ratio")))
   
   if (nrow(results_long_t) > 0) {
     # Density Plots (Student-t) 
     plot_title_density_t <- "Distribution of Performance Metrics (d=50, Student-t Model)"
-    plot_subtitle_density_t <- paste("Based on", B_sim, "simulations.", round(fit_t_check$nu, 2), ". Dashed lines are original point estimates.")
+    plot_subtitle_density_t <- paste("Based on", B_sim, "simulations.", nu_subtitle_part, ". Dashed lines are original point estimates.")
     
     med_t <- results_long_t %>%                # already long format
     dplyr::group_by(portfolio, metric) %>%           # both facets
@@ -307,7 +320,7 @@ if (exists("results_t") && is.data.frame(results_t) && nrow(results_t) > 0) {
     
     #  Box Plots (Student-t) 
     plot_title_boxplot_t <- "Comparison of Performance Distributions (d=50, Student-t Model)"
-    plot_subtitle_boxplot_t <- paste("Boxes show distribution over", B_sim, "simulations.", round(fit_t_check$nu, 2), ". Diamonds are original point estimates.")
+    plot_subtitle_boxplot_t <- paste("Boxes show distribution over", B_sim, "simulations.", nu_subtitle_part, ". Diamonds are original point estimates.")
     
     p3_t <- ggplot(results_long_t, aes(x = portfolio, y = value, fill = portfolio)) +
       geom_boxplot(alpha = 0.7, outlier.shape = NA) +
@@ -324,11 +337,11 @@ if (exists("results_t") && is.data.frame(results_t) && nrow(results_t) > 0) {
   
   # --- Plot 2.2: Scatter Plot (Student-t) ---
   plot_title_scatter_t <- "In-Sample Risk-Return Scatter Plot (d=50, Student-t Model)"
-  plot_subtitle_scatter_t <- paste("Cloud shows", B_sim, "simulations.", round(fit_t_check$nu, 2), ". Diamonds are original point estimates.")
+  plot_subtitle_scatter_t <- paste("Cloud shows", B_sim, "simulations.", nu_subtitle_part, ". Diamonds are original point estimates.")
   
-  scatter_data_t <- results_t %>% filter(complete.cases(vol, mean_return))
+  scatter_data_t <- results_t %>% filter(complete.cases(vol, mean))
   if(nrow(scatter_data_t) > 0) {
-    p2_t <- ggplot(scatter_data_t, aes(x = vol, y = mean_return, color = portfolio)) +
+    p2_t <- ggplot(scatter_data_t, aes(x = vol, y = mean, color = portfolio)) +
       geom_point(alpha = 0.3, size = 1.5) + # Simulation cloud
       scale_color_brewer(palette = "Set1", name = "Portfolio Strategy") +
       labs(title = plot_title_scatter_t, subtitle = plot_subtitle_scatter_t,
