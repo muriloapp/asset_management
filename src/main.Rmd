@@ -13,10 +13,20 @@ This assignment consider the first 50 stocks (alphabetical order) in the FTSE 10
 
 
 ```{r, message=FALSE, warning=FALSE}
-library(here)
-library(RiskPortfolios)
-library(ggplot2) 
 library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(mvtnorm) 
+library(MASS)    
+library(RiskPortfolios) 
+library(Matrix) 
+library(zoo)
+library(here)
+library(fitHeavyTail) 
+library(gt)
+library(tidyverse)
+library(PerformanceAnalytics)
+library(rmarkdown, quietly = TRUE)
 
 source(here('src','core_functions.R'))
 
@@ -34,23 +44,22 @@ We next display the sensitivity of in-sample reward and in-sample risk of portfo
 
 #### 1.1. Impact of the dimension given the covariance structure
 
-The figures bellow present a comparative analysis of the in-sample risk-return profiles of two types of risk-based portfolios: Maximum Diversification (maxdiv) and Minimum Variance (minvol). In the first plot, each subplot corresponds to one of the portfolio construction strategies, with the left panel showing results for maxdiv and the right panel for minvol. The x-axis measures the in-sample volatility, which serves as a proxy for portfolio risk, while the y-axis captures the mean return obtained in-sample. Each dot in the plot represents a simulated portfolio (num_subsets = 100), and the portfolios are differentiated by the number of assets they include: 5 (red), 10 (green), and 25 (blue).
+The figures below present a comparative analysis of the in-sample risk-return profiles of two types of risk-based portfolios: Maximum Diversification (maxdiv) and Minimum Variance (minvar). In the first plot, each subplot corresponds to one of the portfolio construction strategies, with the left panel showing results for maxdiv and the right panel for minvar. The x-axis measures the in-sample volatility, while the y-axis captures the mean return obtained in-sample. Each dot in the plot represents a simulated portfolio (num_subsets = 100), and the portfolios are differentiated by the number of assets they include: 5 (red), 10 (green), and 25 (blue).
 
-In the maxdiv panel, we observe a broader dispersion in both risk and return. Portfolios with a larger number of assets (particularly those with 25 assets, shown in blue) tend to cluster toward the lower end of the volatility scale, suggesting that diversification indeed lowers portfolio risk in this strategy. Moreover, these portfolios achieve relatively consistent levels of mean return, forming a concentrated cluster. In contrast, portfolios with only 5 or 10 assets display higher variance in both return and volatility, indicating greater sensitivity to the specific composition of the assets chosen.
+In the maxdiv panel, we observe a broader dispersion in both risk and return. Portfolios with a larger number of assets (particularly those with 25 assets, shown in blue) tend to cluster toward the lower end of the volatility scale, suggesting that diversification indeed lowers portfolio risk in this strategy. Moreover, these portfolios achieve relatively consistent levels of mean return, forming a cluster. In contrast, portfolios with only 5 or 10 assets display higher variance in both return and volatility, indicating greater sensitivity to the specific composition of the assets chosen.
 
-In the minvol panel, volatility is more compressed, particularly for larger portfolios. Most portfolios, regardless of their dimension, achieve a lower volatility than the maxdiv portfolios. This reflects the core objective of the minvol strategy: to minimize risk regardless of return. 
+In the minvar panel, volatility is more compressed, particularly for larger portfolios. Most portfolios, regardless of their dimension, achieve a lower volatility than the maxdiv portfolios. This reflects the core objective of the minvar strategy: to minimize risk regardless of return. 
 
-Comparing across the two strategies, we see that maxdiv portfolios offer greater return potential but at the cost of higher and more variable risk, particularly when the portfolio dimension is small. As the number of assets increases, both risk and return distributions become more concentrated. In contrast, minvol portfolios deliver lower risk. The visual evidence strongly suggests that dimension (number of assets) plays a critical role in stabilizing the performance of both strategies.
+Comparing across the two strategies, we see that maxdiv portfolios offer greater return potential but at the cost of higher risk, particularly when the portfolio dimension is small. As the number of assets increases, both risk and return distributions become more concentrated. In contrast, minvar portfolios deliver lower risk. The visual evidence strongly suggests that dimension (number of assets) plays a critical role in stabilizing the performance of both strategies.
 
-The boxplots provide a more granular view of the distributional characteristics of the in-sample volatility and in-sample mean return for the maxdiv and minvol portfolios across portfolio dimensions. The boxplots confirm that increasing the number of assets reduces in-sample volatility for both strategies. Return variability decreases slightly with larger portfolios, but the effect is less pronounced than for volatility.Overall, adding more assets mainly improves risk control, with limited impact on returns.
+The boxplots provide a more granular view of the distributional characteristics of the in-sample volatility and in-sample mean return for the maxdiv and minvar portfolios across portfolio dimensions. The boxplots confirm that increasing the number of assets reduces in-sample volatility for both strategies. Return variability decreases slightly with larger portfolios, but the effect is less pronounced than for volatility. Overall, adding more assets mainly improves risk control, with limited impact on returns.
 
 
 ```{r, message=FALSE, warning=FALSE}
 
 dims <- c(5, 10, 25)
-num_subsets <- 100  # how many random sub-universes to sample for each d
-results_b1 <- analyze_dim_impact(rets, dims, 
-                                 num_subsets)
+num_subsets <- 100  # number of random sub-universes to sample for each d
+results_b1 <- analyze_dim_impact(rets, dims, num_subsets)
 
 ```
 
@@ -63,7 +72,7 @@ ggplot(results_b1, aes(x = vol, y = mean_return, color = as.factor(dimension))) 
   geom_point() +
   facet_wrap(~ portfolio) +
   labs(
-    title = "In-sample Risk vs. Return for Min-Vol and Max-Div Portfolios",
+    title = "In-sample risk vs. return for minvar and maxdiv portfolios",
     x     = "Volatility (in-sample)",
     y     = "Mean Return (in-sample)",
     color = "Dimension\n(# assets)"
@@ -74,7 +83,7 @@ ggplot(results_b1, aes(x = vol, y = mean_return, color = as.factor(dimension))) 
 ggplot(results_b1, aes(x = as.factor(dimension), y = vol, fill = portfolio)) +
   geom_boxplot(alpha = 0.6) +  # a bit of transparency
   labs(
-    title = "Distribution of In-sample Volatility",
+    title = "Distribution of in-sample volatility",
     x     = "Dimension (# assets)",
     y     = "Volatility"
   )
@@ -83,7 +92,7 @@ ggplot(results_b1, aes(x = as.factor(dimension), y = vol, fill = portfolio)) +
 ggplot(results_b1, aes(x = as.factor(dimension), y = mean_return, fill = portfolio)) +
   geom_boxplot(alpha = 0.6) +
   labs(
-    title = "Distribution of In-sample Mean Return",
+    title = "Distribution of in-sample mean return",
     x     = "Dimension (# assets)",
     y     = "Mean Return (weekly)"
   )
@@ -93,9 +102,9 @@ ggplot(results_b1, aes(x = as.factor(dimension), y = mean_return, fill = portfol
 
 #### 1.2. Impact of variances given dimension and correlation structure
 
-We now analyze the Impact of variances, given dimension and correlation structure. The set of plots illustrates how increasing asset-level variances affects portfolio volatility. This is operationalized by scaling the asset variances uniformly via a “scale factor”, applied equally across all assets in the universe. The correlation structure is fixed and hence portfolio weights remain unchanged, given the scalar factor multiply all asset variances.
+We now analyze the impact of variances, given dimension and correlation structure. The set of plots illustrates how increasing asset-level variances affects portfolio volatility. This is operationalized by scaling the asset variances uniformly via a “scale factor”, applied equally across all assets in the universe. The correlation structure is fixed and hence portfolio weights remain unchanged, given the scalar factor multiply all asset variances.
 
-The first two plots show how portfolio volatility responds to increases in the variance scaling factor under the MinVol and MaxDiv strategies, respectively. In this exercise, any increase in individual asset variances leads to a mechanical and proportional increase in portfolio-level variance, given the correlation structure and the scalar factor (relative variances remain unchanges). This is evident in the monotonic rise in the distribution of portfolio volatility across scale factors in both strategies. The dispersion increases in portfolios that include fewer assets, reflecting a reduced ability to diversify away the idiosyncratic risk as variance increases. The third plot shows that mean returns remain constant across scale factors, as expected, only the variances are scaled, not the return process. 
+The first two plots show how portfolio volatility responds to increases in the variance scaling factor under the minvar and maxdiv strategies, respectively. In this exercise, any increase in individual asset variances leads to a mechanical and proportional increase in portfolio-level variance, given the correlation structure and the scalar factor (relative variances remain unchanged). This is evident in the monotonic rise in the distribution of portfolio volatility across scale factors in both strategies. The dispersion increases in portfolios that include fewer assets, reflecting a reduced ability to diversify away the idiosyncratic risk as variance increases. The third plot shows that mean returns remain constant across scale factors, as expected, only the variances are scaled, not the return process. 
 
 ```{r, message=FALSE, warning=FALSE}
 
@@ -114,14 +123,14 @@ results_b2 <- analyze_variance_impact(rets, dims_b2,
 
 
 # Plot distribution of final portfolio vol for each scale_factor
-res_minvol <- subset(results_b2, portfolio == "minvol")
+res_minvar <- subset(results_b2, portfolio == "minvol")
 
-ggplot(res_minvol, aes(x = factor(scale_factor), y = vol, fill = factor(dimension))) +
+ggplot(res_minvar, aes(x = factor(scale_factor), y = vol, fill = factor(dimension))) +
   geom_boxplot() +
   labs(
-    title = "Minvol: Distribution of Vol by Scale Factor",
-    x     = "Scale Factor",
-    y     = "Portfolio Vol"
+    title = "Minvar: distribution of vol by scale factor",
+    x     = "Scale factor",
+    y     = "Portfolio vol"
   )
 
 
@@ -130,9 +139,9 @@ res_maxdiv <- subset(results_b2, portfolio == "maxdiv")
 ggplot(res_maxdiv, aes(x = factor(scale_factor), y = vol, fill = factor(dimension))) +
   geom_boxplot() +
   labs(
-    title = "Maxdiv: Distribution of Vol by Scale Factor",
-    x     = "Scale Factor",
-    y     = "Portfolio Vol"
+    title = "Maxdiv: distribution of vol by scale factor",
+    x     = "Scale factor",
+    y     = "Portfolio vol"
   )
 
 
@@ -148,10 +157,10 @@ ggplot(avg_all, aes(x = scale_factor, y = mean_ret,
   geom_point(size = 2) +
   facet_wrap(~ portfolio) +
   labs(
-    title = "Mean Return Across Scale Factors",
-    subtitle = "Separated by Portfolio Type (Min-Vol vs Max-Div)",
-    x = "Scale Factor (std dev multiplier)",
-    y = "Average Mean Return",
+    title = "Mean return across scale factors",
+    subtitle = "Separated by portfolio type (minvar vs maxdiv)",
+    x = "Scale factor (std dev multiplier)",
+    y = "Average mean return",
     color = "Dimension"
   ) +
   theme_minimal()
@@ -160,11 +169,11 @@ ggplot(avg_all, aes(x = scale_factor, y = mean_ret,
 #### 1.3. Impact of correlation given dimension and variances
 
 
-The first figure illustrates how the volatility of the minvol portfolio evolves with increasing equicorrelation levels ($\rho$) for different portfolio sizes. Each panel represents a different portfolio dimension (d=5,10,25), and the bold line highlights the average volatility across multiple random subsets. As expected, portfolio volatility increases monotonically with the level of correlation. This reflects that higher correlation reduces diversification benefits: when assets become more correlated, the ability to cancel out individual risks declines, leading to a rise in total portfolio risk. Importantly, portfolios with more assets (d=25)  achieve lower volatility compared to portfolios with a fewer assets. However, as the equicorrelation increases, the portfolio variance among all portfolio dimensions becomes closer.
+The first figure illustrates how volatility of the minvar portfolio evolves with increasing equicorrelation levels ($\rho$) for different portfolio sizes. Each panel represents a different portfolio dimension (d=5,10,25), and the bold line highlights the average volatility across multiple random subsets. As expected, portfolio volatility increases monotonically with the level of correlation. This reflects that higher correlation reduces diversification benefits: when assets become more correlated, the ability to cancel out individual risks declines, leading to a rise in total portfolio risk. Importantly, portfolios with more assets (d=25)  achieve lower volatility compared to portfolios with a fewer assets. However, as the equicorrelation increases, the portfolio variance among all portfolio dimensions becomes closer.
 
-The second figure presents the same structure but focuses on the maxdiv portfolio. The pattern is qualitatively similar: portfolio volatility increases with correlation, and larger portfolios again benefit from lower volatility levels. However, compared to minvol, the maxdiv portfolios tend to exhibit slightly higher average volatilities. This is consistent with the objective of the maxdiv strategy, which does not minimize volatility directly, but instead maximizes the ratio of weighted average asset volatility to overall portfolio volatility. 
+The second figure presents the same structure but focuses on the maxdiv portfolio. The pattern is qualitatively similar. Portfolio volatility increases with correlation, and larger portfolios again benefit from lower volatility levels. However, compared to minvar, the maxdiv portfolios tend to exhibit slightly higher average volatilities. This is consistent with the objective of the maxdiv strategy, which does not minimize volatility directly, but instead maximizes the ratio of weighted average asset volatility to overall portfolio volatility. 
 
-The third figure shifts focus to the mean return of the portfolios as a function of correlation. For maxdiv portfolios, the mean return remains unchanged across all levels of correlation. This behavior aligns with theory: under the assumption of equicorrelation, it's possible to prove that the maxdiv weights are invariant to $\rho$. In contrast, the minvol portfolios show a mild but consistent decline in mean return as correlation increases, especially in smaller dimensions. 
+The third figure shifts focus to the mean return of the portfolios as a function of correlation. For maxdiv portfolios, the mean return remains unchanged across all levels of correlation. This behavior aligns with theory: under the assumption of equicorrelation, it's possible to prove that the maxdiv weights are invariant to $\rho$. In contrast, the minvar portfolios show a mild but consistent decline in mean return as correlation increases, especially in smaller dimensions. 
 
 
 ```{r, message=FALSE, warning=FALSE}
@@ -183,25 +192,25 @@ results_b3 <- analyze_correlation_impact(rets, dims = dims_b3,
 ```{r, message=FALSE, warning=FALSE}
 
 
-res_minvol <- results_b3 %>% filter(portfolio == "minvol")
+res_minvar <- results_b3 %>% filter(portfolio == "minvol")
 
-avg_minvol <- res_minvol %>%
+avg_minvar <- res_minvar %>%
   group_by(dimension, correlation) %>%
   summarize(mean_vol = mean(vol), .groups = "drop")
 
-ggplot(res_minvol, aes(x = correlation, y = vol,
+ggplot(res_minvar, aes(x = correlation, y = vol,
                        group = interaction(dimension, subset_id))) +
   geom_line(alpha = 0.5, color = "steelblue") +
   geom_point(alpha = 0.5, color = "steelblue") +
-  geom_line(data = avg_minvol,
+  geom_line(data = avg_minvar,
             aes(x = correlation, y = mean_vol, group = dimension),
             color = "black", linewidth = 1.2) +
   facet_wrap(~ dimension, scales = "free_y") +
   labs(
-    title = "Min-Vol: Portfolio Volatility vs Correlation",
+    title = "Minvar: portfolio volatility vs correlation",
     subtitle = "Each panel is a dimension, bold line is the average across simulations",
     x = "Correlation (rho)",
-    y = "Portfolio Volatility"
+    y = "Portfolio volatility"
   ) +
   theme_minimal()
 
@@ -221,15 +230,12 @@ ggplot(res_maxdiv, aes(x = correlation, y = vol,
             color = "black", linewidth = 1.2) +
   facet_wrap(~ dimension, scales = "free_y") +
   labs(
-    title = "Max-Div: Portfolio Volatility vs Correlation",
+    title = "maxdiv: portfolio volatility vs correlation",
     subtitle = "Each panel is a dimension, bold line is the average across simulations",
     x = "Correlation (rho)",
-    y = "Portfolio Volatility"
+    y = "Portfolio volatility"
   ) +
   theme_minimal()
-
-
-
 
 # Aggregate: mean return for each (portfolio, dimension, correlation)
 avg_mean <- results_b3 %>%
@@ -243,19 +249,694 @@ ggplot(avg_mean, aes(x = correlation, y = mean_ret, color = factor(dimension))) 
   facet_wrap(~ portfolio) +
   expand_limits(y = c(min(avg_mean$mean_ret) - 0.001, max(avg_mean$mean_ret) + 0.001)) +
   labs(
-    title = "Mean Return vs Correlation",
+    title = "Mean return vs correlation",
     subtitle = "Averaged across subsets, by dimension",
     x = "Correlation (rho)",
-    y = "Mean Return",
+    y = "Mean return",
     color = "Dimension"
   ) +
   theme_minimal()
 
+```
+
+### 2. In-sample uncertainty
+
+#### 2.1 Gaussian model
+
+This section first investigate the impact of parameter uncertainty in the in-sample performance using a Gaussian model calibrated on the data. The table below presents 95% confidence intervals computed via Gaussian bootstrap simulations (B=1000) for two portfolio strategies: minvar and maxdiv.
+
+Starting with the mean, the maxdiv portfolio exhibits a 95% confidence interval ranging from approximately 0.127% to 0.575% per week, with a median value of 0.361%. In contrast, the minvar portfolio shows an expected return with a CI of 0.134% to 0.542%, and a median of 0.337%. Although the minvar return is lower on average, the intervals for both portfolios do overlap somewhat, suggesting that the difference in returns may not be statistically significant depending on the context and risk preferences.
+
+Regarding volatility, the maxdiv portfolio is associated with a CI between 1.32% and 1.67%, and a median of 1.50%, whereas the minvar portfolio shows lower distribution of risk, with volatility bounded between 1.20% and 1.46%, and a median of 1.33%. This result aligns with the fundamental objective of each strategy: minvar is designed to reduce risk exposure, and this is clearly reflected in its tighter and lower volatility estimates.
+
+The Sharpe ratio, which measures return per unit of risk, provides further insight into risk-adjusted performance. For maxdiv, the Sharpe ratio falls between 0.087 and 0.386, with a median of 0.241. minvar, on the other hand, displays a distribution with CIs of 0.099 to 0.416, and a median of 0.251. This suggests that while maxdiv may yield higher raw returns, minvar offers marginally better consistency in risk-adjusted performance, with slightly less uncertainty in the distribution of outcomes.
+
+Overall, these Gaussian bootstrap-based confidence intervals suggest that both portfolios are expected to deliver positive returns and Sharpe ratios, but with differing risk-return tradeoffs. The maxdiv strategy tends to achieve higher average returns but also comes with higher risk, while the minvar strategy offers more stable, lower-risk performance. 
 
 
+```{r, message=FALSE, warning=FALSE}
+
+# Gaussian model
+B_sim <- 1000
+results_gauss <- run_bootstrap_simulation(rets, model_type = "gaussian", B = B_sim)
+
+```
+
+```{r, message=FALSE, warning=FALSE}
+
+quant_gauss <- results_gauss %>%                             
+  dplyr::select(portfolio, mean, vol, sharpe) %>%     
+  tidyr::pivot_longer(-portfolio,                            
+                      names_to  = "metric",
+                      values_to = "value") %>%              
+  dplyr::group_by(portfolio, metric) %>%                     
+  dplyr::summarise(                                          
+    q025 = quantile(value, 0.025, na.rm = TRUE),
+    q500 = quantile(value, 0.500, na.rm = TRUE),   
+    q975 = quantile(value, 0.975, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+print(quant_gauss)
+
+```
+
+```{r, message=FALSE, warning=FALSE}
+
+calculate_portfolio_se <- function(results_df) {
+  results_df %>%
+    filter(complete.cases(mean, vol, sharpe)) %>%
+    group_by(portfolio) %>%
+    summarise(
+      across(c(mean, vol, sharpe),
+             list(mean = ~mean(.x, na.rm = TRUE), se = ~sd(.x, na.rm = TRUE))),
+      n_sim_valid = n(),
+      .groups = "drop"
+    ) %>%
+    rename_with(~gsub("_mean", "_avg", .x), contains("_mean"))
+}
+
+summary_gauss <- calculate_portfolio_se(results_gauss)
+
+print("Gaussian Model Summary")
+print(summary_gauss) 
 
 
 ```
+
+
+```{r, message=FALSE, warning=FALSE}
+
+if (exists("results_gauss") && is.data.frame(results_gauss) && nrow(results_gauss) > 0) {
+  
+  # Reshape Gaussian results
+  results_long_gauss <- results_gauss %>%
+    dplyr::select(portfolio, mean, vol, sharpe) %>%
+    dplyr::filter(complete.cases(mean, vol, sharpe)) %>%
+    tidyr::pivot_longer(cols = c(mean, vol, sharpe),
+                        names_to = "metric",
+                        values_to = "value") %>%
+    dplyr::mutate(metric = factor(metric, levels = c("mean", "vol", "sharpe"),
+                                  labels = c("Mean Return", "Volatility", "Sharpe Ratio")))
+  
+  if (nrow(results_long_gauss) > 0) {
+    
+    cols <- c("maxdiv" = "firebrick",
+      "minvol" = "steelblue")
+    
+    # Density Plots (Gaussian) 
+    plot_title_density_g <- "Distribution of performance metrics (Gaussian Model)"
+    plot_subtitle_density_g <- paste("Based on", B_sim, "simulations. Vertical lines: Medians and 95% CI.")
+    
+    med_gauss <- results_long_gauss %>%               
+    dplyr::group_by(portfolio, metric) %>%           
+    dplyr::summarise(med = median(value, na.rm = TRUE),
+                   .groups = "drop")
+    band_gauss <- results_long_gauss %>%                     
+    group_by(portfolio, metric) %>%
+    summarise(q025 = quantile(value, .025, na.rm = TRUE),
+              med  = median(value, na.rm = TRUE),
+              q975 = quantile(value, .975, na.rm = TRUE),
+              .groups = "drop")
+    p1_g <- ggplot(results_long_gauss,
+                 aes(x = value, fill = portfolio)) +
+    geom_density(alpha = .6, adjust = 1.2) +
+    facet_wrap(~ metric, scales = "free") +
+  
+    #lower & upper 95 % bounds
+    geom_vline(data = band_gauss,
+               aes(xintercept = q025, colour = portfolio),
+               linewidth = .8, linetype = "solid", show.legend = FALSE) +
+    geom_vline(data = band_gauss,
+               aes(xintercept = q975, colour = portfolio),
+               linewidth = .8, linetype = "solid", show.legend = FALSE) +
+      
+    geom_vline(data = band_gauss,
+               aes(xintercept = med, colour = portfolio),
+               linewidth = 1, linetype = "dotted", show.legend = FALSE) +
+  
+    scale_fill_manual(values = cols, name = "Portfolio") +
+    scale_colour_manual(values = cols) +          
+    labs(title    = plot_title_density_g,
+         subtitle = plot_subtitle_density_g,
+         x = "Metric value", y = "Density") +
+    theme_minimal(base_size = 13) +
+    theme(legend.position  = "bottom",
+          axis.title.y     = element_blank(),
+          axis.text.y      = element_blank(),
+          axis.ticks.y     = element_blank())
+  
+    print(p1_g)
+
+    # Box Plots (Gaussian) 
+    plot_title_boxplot_g <- "Comparison of performance distributions (Gaussian Model)"
+    plot_subtitle_boxplot_g <- paste("Boxes show distribution over", B_sim)
+    
+    p3_g <- ggplot(results_long_gauss, aes(x = portfolio, y = value, fill = portfolio)) +
+      geom_boxplot(alpha = 0.7, outlier.shape = NA) +
+      facet_wrap(~ metric, scales = "free_y") +
+      scale_fill_brewer(palette = "Set1") +
+      labs(title = plot_title_boxplot_g, subtitle = plot_subtitle_boxplot_g,
+           x = "Portfolio Strategy", y = "Metric Value") +
+      theme_minimal() +
+      theme(legend.position = "none", axis.title.y = element_blank())
+    print(p3_g)
+    
+  } 
+  
+  # Scatter Plot (Gaussian) 
+  plot_title_scatter_g <- "In-sample risk-return scatter plot (Gaussian Model)"
+  plot_subtitle_scatter_g <- paste("Cloud shows", B_sim)
+  
+  scatter_data_g <- results_gauss %>% filter(complete.cases(vol, mean))
+  if(nrow(scatter_data_g) > 0) {
+    p2_g <- ggplot(scatter_data_g, aes(x = vol, y = mean, color = portfolio)) +
+      geom_point(alpha = 0.3, size = 1.5) + # Simulation cloud
+      scale_color_brewer(palette = "Set1", name = "Portfolio Strategy") +
+      labs(title = plot_title_scatter_g, subtitle = plot_subtitle_scatter_g,
+           x = "In-sample volatility", y = "In-sample mean") +
+      theme_minimal() +
+      guides(color = guide_legend(override.aes = list(alpha = 1, size = 3)))
+    print(p2_g)
+  } 
+  
+} 
+
+
+```
+
+
+
+#### 2.2 Student-t model
+
+This subsections considers the same approach as in subsection 2.1 but with a Student-t model. The table displays the 95% bootstrap confidence intervals for the mean, volatility, and Sharpe ratio under the Student-t model, across two portfolios: maxdiv and minvar. Starting with the mean, the maxdiv portfolio shows a 95% confidence interval ranging from approximately 0.040% to 0.533% per week, with a median of 0.300%. For the minvar strategy, the interval is tighter and lower, from 0.031% to 0.487%, with a median of 0.268%. These results suggest that, even under the Student-t model, the maxdiv strategy is expected to yield slightly higher returns on average, although the distributions are relatively close. 
+
+Turning to volatility and risk-adjusted performance, the maxdiv portfolio exhibits a higher volatility profile, with a 95% confidence interval ranging from 1.45% to 1.94%, and a median of 1.67%, while the minvar strategy shows lower volatility, between 1.33% and 1.74%, with a median of 1.52%. These estimates confirm that minvar fulfills its core objective of risk reduction, and notably, the volatility intervals under the Student-t distribution remain quite stable and closely aligned with those observed under the Gaussian model. In terms of Sharpe ratio, maxdiv spans a wider interval, from 0.024 to 0.332, with a median of 0.179, while minvar displays a tighter and more favorable range of 0.195 to 0.336, with a median of 0.175.
+
+Comparing the Gaussian and Student-t bootstrap results reveals several important insights about how distributional assumptions affect perceived performance. The Student-t model consistently yields wider and more conservative confidence intervals. The comparison between the two models shows how distributional assumptions materially affect performance evaluation. Across all metrics, the Student-t model delivers more conservative estimates, especially for mean and Sharpe ratio. This reflects the Student-t’s ability to capture heavy tails. In contrast, the Gaussian model, by assuming thin tails, overstates average performance and compresses confidence interval.
+
+
+```{r, message=FALSE, warning=FALSE}
+
+# Student-t Model
+B_sim <- 1000
+results_t <- run_bootstrap_simulation(rets, model_type = "student_t",
+                                      B = B_sim, seed = 456)
+```
+
+```{r, message=FALSE, warning=FALSE}
+
+quant_t <- results_t %>%                             
+  dplyr::select(portfolio, mean, vol, sharpe) %>%     
+  tidyr::pivot_longer(-portfolio,                            
+                      names_to  = "metric",
+                      values_to = "value") %>%              
+  dplyr::group_by(portfolio, metric) %>%                     
+  dplyr::summarise(                                          
+    q025 = quantile(value, 0.025, na.rm = TRUE),
+    q500 = quantile(value, 0.500, na.rm = TRUE),   
+    q975 = quantile(value, 0.975, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+print(quant_t)
+
+```
+
+```{r, message=FALSE, warning=FALSE}
+
+calculate_portfolio_se <- function(results_df) {
+  results_df %>%
+    filter(complete.cases(mean, vol, sharpe)) %>%
+    group_by(portfolio) %>%
+    summarise(
+      across(c(mean, vol, sharpe),
+             list(mean = ~mean(.x, na.rm = TRUE), se = ~sd(.x, na.rm = TRUE))),
+      n_sim_valid = n(),
+      .groups = "drop"
+    ) %>%
+    rename_with(~gsub("_mean", "_avg", .x), contains("_mean"))
+}
+
+summary_t <- calculate_portfolio_se(results_t)
+
+print("Studen-t Model Summary")
+print(summary_t) 
+
+```
+
+
+```{r, message=FALSE, warning=FALSE}
+
+estimated_nu <- round(fitHeavyTail::fit_mvt(na.omit(rets))$nu, 2)
+nu_subtitle_part <- paste("Est. nu =", estimated_nu)
+
+if (exists("results_t") && is.data.frame(results_t) && nrow(results_t) > 0) {
+  
+  # Reshape Student-t results 
+  results_long_t <- results_t %>%
+    dplyr::select(portfolio, mean, vol, sharpe) %>%
+    dplyr::filter(complete.cases(mean, vol, sharpe)) %>%
+    tidyr::pivot_longer(cols = c(mean, vol, sharpe),
+                        names_to = "metric",
+                        values_to = "value") %>%
+    dplyr::mutate(metric = factor(metric, levels = c("mean", "vol", "sharpe"),
+                                  labels = c("Mean Return", "Volatility", "Sharpe Ratio")))
+  
+  if (nrow(results_long_t) > 0) {
+    
+    # Density Plots (Student-t) 
+    plot_title_density_t <- "Distribution of performance metrics (Student-t Model)"
+    plot_subtitle_density_t <- paste("Based on", B_sim, "simulations.", nu_subtitle_part, ". Vertical lines: Medians and 95% CI.")
+    
+    med_t <- results_long_t %>%                
+    dplyr::group_by(portfolio, metric) %>%           
+    dplyr::summarise(med = median(value, na.rm = TRUE),
+                   .groups = "drop")
+
+    cols <- c("maxdiv" = "firebrick",
+          "minvol" = "steelblue")
+
+    band_t <- results_long_t %>%                           
+    group_by(portfolio, metric) %>%
+    summarise(q025 = quantile(value, .025, na.rm = TRUE),
+              med  = median(value,  na.rm = TRUE),
+              q975 = quantile(value, .975, na.rm = TRUE),
+              .groups = "drop")
+  
+    p1_t <- ggplot(results_long_t, aes(x = value, fill = portfolio)) +
+    geom_density(alpha = .6, adjust = 1.2) +
+    facet_wrap(~ metric, scales = "free") +
+  
+    geom_vline(data = band_t, aes(xintercept = q025, colour = portfolio),
+               linewidth = .8) +
+    geom_vline(data = band_t, aes(xintercept = q975, colour = portfolio),
+               linewidth = .8) +
+        geom_vline(data = band_t, aes(xintercept = med, colour = portfolio),
+               linetype  = "dotted", linewidth = 1) +
+  
+    scale_fill_manual(values = cols, name = "Portfolio") +
+    scale_colour_manual(values = cols, guide = "none") +
+    labs(title    = plot_title_density_t,
+         subtitle = plot_subtitle_density_t,
+         x = "Metric value", y = "Density") +
+    theme_minimal(base_size = 13) +
+    theme(legend.position  = "bottom",
+          axis.title.y     = element_blank(),
+          axis.text.y      = element_blank(),
+          axis.ticks.y     = element_blank())
+    
+    print(p1_t)
+    
+    #  Box Plots (Student-t) 
+    plot_title_boxplot_t <- "Comparison of performance distributions (Student-t Model)"
+    plot_subtitle_boxplot_t <- paste("Boxes show distribution over", B_sim, "simulations.", nu_subtitle_part, ".")
+    
+    p3_t <- ggplot(results_long_t, aes(x = portfolio, y = value, fill = portfolio)) +
+      geom_boxplot(alpha = 0.7, outlier.shape = NA) +
+      facet_wrap(~ metric, scales = "free_y") +
+      scale_fill_brewer(palette = "Set1") +
+      labs(title = plot_title_boxplot_t, subtitle = plot_subtitle_boxplot_t,
+           x = "Portfolio strategy", y = "Metric value") +
+      theme_minimal() +
+      theme(legend.position = "none", axis.title.y = element_blank())
+    print(p3_t)
+    
+  } 
+  
+  # Scatter Plot (Student-t) 
+  plot_title_scatter_t <- "In-sample risk-return scatter plot (Student-t Model)"
+  plot_subtitle_scatter_t <- paste("Cloud shows", B_sim, "simulations.", nu_subtitle_part, ".")
+  
+  scatter_data_t <- results_t %>% filter(complete.cases(vol, mean))
+  if(nrow(scatter_data_t) > 0) {
+    p2_t <- ggplot(scatter_data_t, aes(x = vol, y = mean, color = portfolio)) +
+      geom_point(alpha = 0.3, size = 1.5) + # Simulation cloud
+      scale_color_brewer(palette = "Set1", name = "Portfolio Strategy") +
+      labs(title = plot_title_scatter_t, subtitle = plot_subtitle_scatter_t,
+           x = "In-sample volatility", y = "In-sample mean") +
+      theme_minimal() +
+      guides(color = guide_legend(override.aes = list(alpha = 1, size = 3)))
+    print(p2_t)
+  } 
+  
+}
+
+
+```
+
+
+#### 2.3 In-sample shrinkage approaches
+
+We now analyse the impact of robustification techniques. In particular, we compare the results considering the sample covariance matrix agains the results using two alternative shrinkage estimators from the package RiskPortfolios: 1- Ledoit-Wolf estimator (see Ledoit and Wolf (2003)); 2- Factor analysis with a total of 3 factors (see Harman (1976)).
+
+First, to provide a visualization about what these alternative estimators are doing, we plot three heatmaps, one for each of the covariance matrix estimator. These heatmaps consider the entire sample period and all 50 assets. The sample covariance matrix heatmap reveals a highly detailed and noisy structure, where the clustering patterns appear dense and full of minor variations. This reflects the fact that the sample covariance estimator uses only historical data without any form of regularization. While the heatmap retains all the empirical relationships, it also retains much of the noise, which can lead to unstable portfolio optimization results.
+
+The Ledoit-Wolf covariance matrix heatmap, by contrast, exhibits smoother transitions and more structured block patterns. This estimator applies shrinkage toward a structured target, which reduces estimation error and enhances numerical stability. The heatmap visually reflects this improvement: the noise is visibly reduced, and asset clusters emerge. The result is a more stable and reliable covariance estimate, especially valuable in high-dimensional settings.
+
+The factor covariance matrix heatmap shows an even more pronounced level of shrinkage and structure. Instead of estimating pairwise covariances directly, this approach models asset covariances via exposures to a small number of underlying factors. This structure implies that much of the correlation is being captured through common latent components, and idiosyncratic relationships are downweighted or ignored.
+
+
+```{r, message=FALSE, warning=FALSE}
+
+heatmap(cov(rets), main = "")
+title(main = "Sample covariance matrix heatmap", font.main = 1)
+
+heatmap(covEstimation(rets, control = list(type = 'lw')), main = "")
+title(main = "Ledoit-Wolf covariance matrix estimator heatmap", font.main = 1)
+
+heatmap(RiskPortfolios::covEstimation(rets, control = list(type = 'factor', K = 3)), main = "")
+title(main = "Factor covariance matrix estimator heatmap", font.main = 1)
+
+```
+
+We now investigate the in-sample impact of different covariance matrix estimators on the performance of optimized portfolios using bootstrap resampling (B = 1000), we evaluate two portfolio strategies, minimum variance and maximum diversification. The first boxplot shows that shrinkage reduces volatility dispersion for both portfolios. The sample covariance produces wider spreads and more extreme outliers, particularly for minvar, where the upper tail is visibly large. In contrast, both Ledoit-Wolf and the factor model result in significantly tighter and lower volatility estimates, implying more stable risk profiles. This is expected: shrinkage reduces estimation error by pulling extreme covariance entries toward a structured prior, leading to greater robustness in the optimized weights.
+
+Importantly, for maxdiv, the LW estimator produces the lowest volatility on average, while the factor model stabilizes but with a slightly higher level. This may be due to the factor model ignoring some idiosyncratic variation. For minvar, the pattern is similar: sample covariance has more noise, LW delivers lower average volatility, and the factor model provides moderate stability.
+
+In terms of means, the picture changes. The sample estimator tends to produce higher median returns but also exhibits greater dispersion, especially for maxdiv. This suggests that optimizing with the raw sample covariance matrix may lead to more aggressive portfolios, reflecting both upside potential and downside risk due to overfitting noise in the sample. In contrast, Ledoit-Wolf and factor-based portfolios yield more conservative return profiles, with tighter distributions centered around slightly lower means.  
+
+These results reaffirm that shrinkage estimators improve stability, reducing the risk of overfitting and leading to more reliable portfolio construction, especially when asset dimensionality is high or the sample size is limited. We expect that these results should be even more pronounce when we consider out-of-sample results.
+
+
+```{r, message=FALSE, warning=FALSE}
+
+B   <- 1000             
+res <- run_boot(rets, B)
+
+summary_tab <- res |>
+  group_by(portfolio, cov_est) |>
+  summarise(across(c(mean, vol, SR),
+                   list(mu = mean, se = sd), .names = "{.col}_{.fn}"),
+            .groups = "drop")
+
+ggplot(res, aes(x = cov_est, y = vol, fill = cov_est)) +
+  geom_boxplot(alpha = .65, outlier.shape = 1) +
+  facet_wrap(~ portfolio, scales = "free_y") +
+  scale_fill_brewer(palette = "Set1", guide = "none") +
+  labs(title = "In-sample shrinkage effect",
+       subtitle = paste0("Bootstrapped (B = ", B, ") — Sample vs Ledoit-Wolf vs Factor"),
+       x = NULL, y = "Volatility") +
+  theme_minimal(base_size = 13)
+
+ggplot(res, aes(x = cov_est, y = mean, fill = cov_est)) +
+  geom_boxplot(alpha = .65, outlier.shape = 1) +
+  facet_wrap(~ portfolio, scales = "free_y") +
+  scale_fill_brewer(palette = "Set1", guide = "none") +
+  labs(title = "In-sample shrinkage effect",
+       subtitle = paste0("Bootstrapped (B = ", B, ") — Ledoit-Wolf vs Factor vs Sample"),
+       x = NULL, y = "Mean") +
+  theme_minimal(base_size = 13)
+
+```
+
+
+#### 2.4 Compare different resampling approaches
+
+In this analysis, we explore how different resampling strategies impact the construction and stability of optimized portfolios when using the sample covariance matrix estimator. We consider three resampling schemes. First, the iid bootstrap, which resamples rows independently with replacement. Second, the block bootstrap, which resamples consecutive blocks of returns to preserve dependence. In this method, we consider the approach Politis and Romano (1994) and use the package tseries with option type of stationarity. Finally, the third method is Gaussian resampling, which generates synthetic returns from a multivariate normal distribution calibrated to the sample mean and covariance.
+
+The weights violin plots illustrate the distribution of portfolio weights across resamples for each (resample scheme × portfolio) pair. Across both minvar and maxdiv, iid resampling consistently produces the widest distribution of weights. This indicates that weights are highly sensitive to random resampling of return rows. Block bootstrap, which retains temporal structure, and Gaussian bootstrap lead to slightly tighter weight distributions. Moreover, the violin plots of maxdiv, they tend to be taller and wider than those of minvar. This reflects that weights in maxdiv vary more across bootstrap samples. In minvar, portfolios often concentrate on a few low-volatility assets.
+
+The plots for the dispersion of mean, volatility and Sharpe ratio summarise how results change according to each resampling scheme. The iid bootstraped portfolios deliver the biggest estimation uncertainty, as evidenced by the tallest boxes and the single lowest Sharpe outliers. Block bootstrap generally produces shorter vertical ranges for both mean and Sharpe, suggesting that once serial dependence is preserved, the estimator is more stable than under iid resampling.
+
+
+```{r, message=FALSE, warning=FALSE}
+
+boot_out <- boot_portfolio_stats(rets, B = 200)
+
+w_long <- purrr::imap_dfr(boot_out$weights_raw, ~
+                            as.data.frame(.x) |>
+                            pivot_longer(everything(), values_to = "w") |>
+                            mutate(tag = .y))
+
+metric_long <- dplyr::bind_rows(boot_out$metrics_raw) |>
+  pivot_longer(c(mean, vol, sharpe),
+               names_to = "stat",
+               values_to = "value")
+
+p_weights <- ggplot(w_long, aes(tag, w, fill = tag)) +
+  geom_violin(trim = FALSE, alpha = .6) +
+  labs(title = "Weight dispersion", x = NULL, y = "Weight") +
+  theme_minimal(base_size = 12) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "none")
+
+p_metrics <- ggplot(metric_long, aes(tag, value, fill = tag)) +
+  geom_violin(trim = FALSE, alpha = .6) +
+  facet_wrap(~ stat, scales = "free_y") +
+  labs(title = "Dispersion of mean, volatility, Sharpe",
+       x = NULL, y = NULL) +
+  theme_minimal(base_size = 12) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "none")
+
+p_metrics_box <- ggplot(metric_long, aes(tag, value, fill = tag)) +
+  geom_boxplot(outlier.alpha = .25, width = .6) +
+  facet_wrap(~ stat, scales = "free_y") +
+  labs(title = "Dispersion of mean, volatility, Sharpe (box plot)",
+       x = NULL, y = NULL) +
+  theme_minimal(base_size = 12) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "none")
+
+
+p_weights
+p_metrics
+p_metrics_box
+
+
+```
+
+
+### 3. Out-of-sample impact 
+
+#### 3.1 Out-of-sample performance analysis
+
+In this section we select the first 25 equities in the data set in alphabetical order, the model is estimated on a 104-week look-back window, approximately 2 years. Each week we (i) compute the plain sample covariance of those 104 observations, (ii) form two long-only efficient portfolios, the minimum-variance portfolio and the maximum-diversification portfolio, and (iii) apply the resulting weights to the return of the next week. All subsequent weeks repeat this roll-forward procedure, so every out-of-sample (OOS) return is generated with information that was available at the time. In this set-up the minvar strategy delivers the smoothest out-of-sample rolling window volatility and the highest Sharpe ratio. The maxdiv strategy earns a lower average return and it shows higher volatility.
+
+
+```{r, message=FALSE, warning=FALSE}
+
+R25   <- prep_data(rets)  
+oos   <- rolling_oos(R25)                          
+
+oos_samp <- oos %>%                    
+  filter(cov_est == "sample")  
+oos_start <- min(oos_samp$week)         
+
+ann_fac <- sqrt(52)
+perf_tbl <- oos_samp %>%
+  group_by(portfolio) %>%
+  summarise(
+    mean_ret = mean(ret) * 52,               
+    vol      = sd(ret)   * ann_fac,          
+    sharpe   = mean_ret / vol,
+    cum_ret  = prod(1 + ret) - 1,
+    .groups = "drop"
+  )
+
+perf_tbl %>% mutate(across(where(is.numeric), ~round(.x, 4)))
+
+aux <- oos_samp %>%
+  arrange(week) %>%
+  group_by(portfolio) %>%
+  mutate(aux = cumprod(1 + ret)) %>%
+  ungroup()
+
+# Cumulative return
+ggplot(aux, aes(week, aux, colour = portfolio)) +
+  geom_line(size = 1) +
+  geom_vline(xintercept = oos_start, colour = "black") +
+  scale_colour_manual(values = c("minvar" = "steelblue",
+                                 "maxdiv" = "firebrick"),
+                      name = "Portfolio") +
+  labs(title = "Cumulative return — sample covariance",
+       subtitle = paste("Vertical bar = start of OOS (week", oos_start, ")"),
+       x = "Week", y = "Wealth (start of OOS = 1)") +
+  theme_minimal(base_size = 13)
+
+# 52-week rolling volatility plot 
+roll_vol <- aux %>%
+  group_by(portfolio) %>%
+  mutate(roll_vol = rollapply(ret, width = 52,
+                              FUN = sd, fill = NA, align = "right") *
+           ann_fac) %>%
+  ungroup()
+roll_vol <- na.omit(roll_vol)
+
+ggplot(roll_vol, aes(week, roll_vol, colour = portfolio)) +
+  geom_line(size = 1) +
+  scale_colour_manual(values = c("minvar" = "steelblue",
+                                 "maxdiv" = "firebrick"),
+                      name = "Portfolio") +
+  labs(title = "OOS rolling 52-week volatility — sample covariance",
+       x = "Week", y = "Ann. volatility") +
+  theme_minimal(base_size = 13)
+```
+
+
+
+#### 3.2 Out-of-sample performance and shrinkage approaches
+
+Keeping the same rolling window and weekly re-balancing schedule, we now replace the noisy sample covariance with two shrinkage estimators: (i) Ledoit–Wolf linear shrinkage toward the identity matrix, and (ii) a 3-factor model whose covariance is shrunk toward the factor block. These are the same estimators we considered in section 2. Both estimators lift the smallest eigenvalues and lower the condition number. Out-of-sample this translates into visibly smoother return trajectories and lower volatility for both portfolios. 
+
+The maxdiv portfolio benefits the most form the shrinkage approahces, its realized volatility drops markedly, pushing its Sharpe ratio above the minvar strategy. The table confirms that intuition. With the plain sample covariance the maxdiv strategy gives an annualized Sharpe of 0.055. Switching to Ledoit–Wolf lifts the mean return while volatility is virtually unchanged, so the Sharpe climbs to 0.072. The 3-factor shrinkage goes one step further: volatility drops by another 10–20 bp and the mean rises again, pushing the Sharpe to 0.078. For the minvar strategy the gains are smaller in percentage terms  but the pattern is the same.
+
+
+```{r, message=FALSE, warning=FALSE}
+
+ann_fac <- sqrt(52)                      
+perf_tbl <- oos %>%
+  group_by(portfolio, cov_est) %>%
+  summarise(
+    mean_ret = mean(ret),
+    vol      = sd(ret),
+    sharpe   = mean_ret / vol,
+    cum_ret  = prod(1 + ret) - 1,
+    .groups = "drop"
+  ) %>%
+  mutate(
+    mean_ret = mean_ret * 52,            
+    vol      = vol * ann_fac
+  )
+  
+perf_tbl
+
+# Cumulative return data 
+aux <- oos %>%
+  arrange(week) %>%
+  group_by(portfolio, cov_est) %>%
+  mutate(aux = cumprod(1 + ret)) %>%
+  ungroup()
+
+oos_start <- min(oos$week)             
+
+ggplot(aux,
+       aes(x = week, y = aux, colour = cov_est)) +
+  geom_line() +
+  facet_wrap(~ portfolio, nrow = 2) +
+  geom_vline(xintercept = oos_start, colour = "black", linetype = "solid") +
+  scale_colour_brewer(palette = "Set1", name = "Covariance") +
+  labs(title = "Cumulative return",
+       subtitle = paste0("Vertical bar = start of OOS period (week ",
+                         oos_start, ")"),
+       x = "Week", y = "Wealth (start of OOS = 1)") +
+  theme_minimal(base_size = 13)
+
+# 52-week rolling volatility plot 
+plot_rolling_vol <- function(oos_tbl) {
+  oos_tbl %>%
+    arrange(week) %>%
+    group_by(portfolio, cov_est) %>%
+    mutate(trail_vol = zoo::rollapply(ret, width = 52,
+                                      FUN = sd, fill = NA, align = "right") * sqrt(52)) %>%
+    filter(!is.na(trail_vol)) %>%
+    ggplot(aes(week, trail_vol, colour = cov_est)) +
+    geom_line() +
+    facet_wrap(~ portfolio, nrow = 2) +
+    scale_colour_brewer(palette = "Set1", name = "Cov estimator") +
+    labs(title = "OOS rolling 52-week volatility",
+         x = "Week", y = "Ann. volatility") +
+    theme_minimal(base_size = 13) 
+}
+
+
+plot_rolling_vol(oos)   
+
+```
+
+
+
+#### 3.3 Out-of-sample performance and resampling approaches
+
+In this subsection, instead of taming estimation error inside the covariance matrix, we address it at the portfolio construction step. For every weekly window we create 100 pseudo-samples based on iid bootstrap, a stationary block bootstrap, or a Gaussian parametric bootstrap. We optimise each replica, average the resulting weight vectors, and then invest those averaged weights for the next week to compute the out-of-sample statistics and compare the three resampling approaches.
+
+Our results show that plug-in portfolios, built directly from the raw sample covariance without any resampling, carry the most estimation noise. This estimator has the highest 52-week‐volatility curves for nearly the entire out-of-sample window for both min-vol and max-div. For the maxdiv portfolios, resampling dampens those extremes, the stationary-block bootstrap and iid boostrap trims volatility the most in our sample. 
+
+
+```{r, message=FALSE, warning=FALSE}
+
+oos_res <- rolling_oos_resamp(R25)
+oos_start <- min(oos_res$week)
+
+oos_samp2 <- oos_samp %>%                    
+  mutate(resample = "plugin")                
+
+oos_all <- bind_rows(oos_res, oos_samp2) %>%  
+  mutate(resample = factor(resample,
+           levels = c("plugin","iid","block","gauss")))
+
+ann_f <- sqrt(52)
+perf_tbl <- oos_all %>%
+  group_by(resample, portfolio) %>%
+  summarise(
+    mean    = mean(ret) * 52,
+    vol     = sd(ret)   * ann_f,
+    sharpe  = mean / vol,
+    cum_ret = prod(1 + ret) - 1,
+    .groups = "drop"
+  ) %>%
+  arrange(portfolio, resample)
+perf_tbl
+
+# Cumulative return
+aux <- oos_all %>%
+  arrange(week) %>%
+  group_by(resample, portfolio) %>%
+  mutate(aux = cumprod(1 + ret)) %>%
+  ungroup()
+
+ggplot(aux, aes(week, aux, colour = resample)) +
+  geom_line(size = 1) +
+  geom_vline(xintercept = oos_start, colour = "black") +
+  facet_wrap(~ portfolio, nrow = 2, scales = "free_y") +
+  scale_colour_brewer(palette = "Set1", name = "Estimator") +
+  labs(title    = "Cumulative return",
+       subtitle = paste("Vertical bar = start of OOS period (week", oos_start, ")"),
+       x = "Week", y = "Wealth (start of OOS = 1)") +
+  theme_minimal(base_size = 13) +
+  theme(legend.position = "right",
+        panel.grid.major.x = element_blank(),
+        strip.background = element_blank())   
+
+# Rolling volatility 
+roll_vol <- oos_all %>%
+  arrange(week) %>%
+  group_by(resample, portfolio) %>%
+  mutate(rvol = zoo::rollapply(ret, 52, sd, fill = NA, align = "right") *
+                 sqrt(52)) %>%
+  ungroup()
+
+cutoff <- oos_start + 52         
+roll_vol_f <- roll_vol %>%
+  filter(week >= cutoff)
+
+ggplot(roll_vol_f, aes(week, rvol, colour = resample)) +
+  geom_line(size = 1) +
+  facet_wrap(~ portfolio, nrow = 2, scales = "free_y") +
+  scale_colour_brewer(palette = "Set1", name = "Estimator") +
+  labs(title = "OOS rolling 52-week volatility",
+       x = "Week", y = "Ann. volatility") +
+  theme_minimal(base_size = 13)
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
