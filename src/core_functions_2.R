@@ -8,6 +8,7 @@ library(Matrix)
 library(here)
 library(fitHeavyTail) 
 
+#2.1; 2.2
 
 compute_in_sample_metrics_sharpe <- function(weights, returns_matrix, risk_free_rate = 0) {
   if(ncol(returns_matrix) != length(weights)) { stop("Dim mismatch: weights vs returns.")}
@@ -25,7 +26,7 @@ run_bootstrap_simulation <- function(rets_orig, model_type = "gaussian",
   set.seed(seed)
   T_obs <- nrow(rets_orig)
   n_assets <- ncol(rets_orig)
-  portfolio_types <- c("minvol", "maxdiv")
+  portfolio_types <- c("minvar", "maxdiv")
   params <- list()
   # Calibration Gaussian or Student-t
   if (model_type == "gaussian") {
@@ -93,7 +94,6 @@ run_bootstrap_simulation <- function(rets_orig, model_type = "gaussian",
   return(results_df)
 }
 
-
 # 2.3
 
 metrics <- function(w, R) {
@@ -108,7 +108,7 @@ make_pd <- function(S)
   if (min(eigen(S, TRUE)$values) < 1e-8) as.matrix(nearPD(S)$mat) else S
 
 
-one_draw <- function(R, portfolios = c("minvol","maxdiv")) {
+one_draw <- function(R, portfolios = c("minvar","maxdiv")) {
   Rb <- R[sample.int(nrow(R), replace = TRUE), ]      
   
   # Covariance estimators
@@ -149,21 +149,18 @@ run_boot <- function(R, B = 500, seed = 1) {
     mutate(cov_est = factor(cov_est, levels = c("sample","LW","FM")))
 }
 
-
-
-
 # 2.4
 
-make_pd <- function(S) {
-  if (any(!is.finite(S))) return(diag(mean(diag(S), na.rm = TRUE), ncol(S)))
-  ev <- eigen(S, symmetric = TRUE, only.values = TRUE)$values
-  if (min(ev) <= 1e-8) as.matrix(nearPD(S)$mat) else S
-}
+#make_pd <- function(S) {
+#  if (any(!is.finite(S))) return(diag(mean(diag(S), na.rm = TRUE), ncol(S)))
+#  ev <- eigen(S, symmetric = TRUE, only.values = TRUE)$values
+#  if (min(ev) <= 1e-8) as.matrix(nearPD(S)$mat) else S
+#}
 cov_fun <- function(R) make_pd(cov(R, use = "pairwise.complete.obs"))
 sharpe  <- function(w, R) { w <- w/sum(w); p <- drop(R %*% w); mean(p)/sd(p) }
 
 draw_iid   <- function(R) R[sample.int(nrow(R), replace = TRUE), ]
-draw_block_rows <- function(R, l)
+draw_block <- function(R, l)
   R[tseries::tsbootstrap(1:nrow(R), nb = 1, statistic = NULL,
                          b = l, type = "stationary"), , drop = FALSE]
 draw_gauss <- function(R) mvtnorm::rmvnorm(nrow(R), colMeans(R), cov(R))
@@ -171,9 +168,9 @@ draw_gauss <- function(R) mvtnorm::rmvnorm(nrow(R), colMeans(R), cov(R))
 
 boot_portfolio_stats <- function(rets,
                                  schemes   = c("iid","block","gauss"),
-                                 ports     = c("minvol","maxdiv"),
+                                 ports     = c("minvar","maxdiv"),
                                  B         = 100,
-                                 block_len = 20) {
+                                 block_len = 10) {
   
   weight_store <- list()
   metric_store <- list()
@@ -181,7 +178,7 @@ boot_portfolio_stats <- function(rets,
   for (sc in schemes) {
     draw_fun <- switch(sc,
                        iid   = draw_iid,
-                       block = function(R) draw_block_rows(R, l = block_len),
+                       block = function(R) draw_block(R, l = block_len),
                        gauss = draw_gauss)
     
     for (pt in ports) {
@@ -216,10 +213,102 @@ boot_portfolio_stats <- function(rets,
        metrics_raw = metric_store)
 }
 
+# 3.1; 3.2
+
+prep_data <- function(Rfull, n_assets = 25) {
+  as.matrix(Rfull[, 1:n_assets])
+}
+
+get_cov <- function(R, method = c("sample", "lw", "factor3")) {
+  method <- match.arg(method)
+  switch(method,
+         sample  = make_pd(cov(R)),
+         lw      = RiskPortfolios::covEstimation(R, control = list(type = "lw")),
+         factor3 = RiskPortfolios::covEstimation(R, control = list(type = "factor", K = 3))
+  )
+}
+
+get_weights <- function(S, port_type = c("minvar","maxdiv")) {
+  optimalPortfolio(S, control = list(type = match.arg(port_type), constraint = "lo"))
+}
+
+oos_one_step <- function(Rtrain, Rnext, port_type, cov_method) {
+  S <- get_cov(Rtrain, cov_method)
+  w <- get_weights(S, port_type)
+  sum(w * Rnext) # one-week OOS return
+}
+
+rolling_oos <- function(R25,
+                        window_len = 104,
+                        port_types = c("minvar","maxdiv"),
+                        cov_methods = c("sample","lw","factor3"))
+{
+  stopifnot(nrow(R25) > window_len + 1)
+  
+  out <- data.frame()       # store results per week × portfolio × cov
+  for (t in window_len:(nrow(R25) - 1)) {
+    Rtrain <- R25[(t - window_len + 1):t, ]
+    Rnext  <- R25[t + 1, ]
+    
+    for (p in port_types)
+      for (cm in cov_methods) {
+        ret <- oos_one_step(Rtrain, Rnext, p, cm)
+        out <- rbind(out,
+                     data.frame(week = t + 1,
+                                portfolio = p,
+                                cov_est   = cm,
+                                ret       = ret))
+      }
+  }
+  out
+}
+
+# 3.3
+
+avg_weights <- function(R, draw_fun, B, port_type) {
+  W <- matrix(NA, B, ncol(R))
+  for (b in 1:B) {
+    Rb <- draw_fun(R)
+    S  <- make_pd(cov(Rb))
+    W[b,] <- tryCatch(
+      optimalPortfolio(S, control = list(type = port_type,
+                                         constraint = "lo")),
+      error = function(e) NA)
+  }
+  colMeans(W, na.rm = TRUE)
+}
 
 
-
-
+rolling_oos_resamp <- function(R25, window_len = 104,
+                               B = 100, block_len = 10,
+                               schemes = c("iid","block","gauss"),
+                               ports   = c("minvar","maxdiv"))
+{
+  out <- data.frame()
+  for (t in window_len:(nrow(R25) - 1)) {
+    
+    Rtrain <- R25[(t - window_len + 1):t, ]
+    Rnext  <- R25[t + 1, ]
+    
+    for (sc in schemes) {
+      draw_fun <- switch(sc,
+                         iid   = draw_iid,
+                         block = function(R) draw_block(R, block_len),
+                         gauss = draw_gauss)
+      
+      for (pt in ports) {
+        w_bar <- avg_weights(Rtrain, draw_fun, B, pt)
+        ret   <- sum(w_bar * Rnext)
+        out   <- rbind(out,
+                       data.frame(week = t + 1,
+                                  resample = sc,
+                                  portfolio = pt,
+                                  ret = ret))
+      }
+    }
+  }
+  out
+}
 
 
 
