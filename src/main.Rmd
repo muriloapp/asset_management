@@ -9,7 +9,7 @@ date: "April, 2025"
 
 ### Load libraries and data 
 
-This assignment consider the first 50 stocks (alphabetical order) in the FTSE 100 universe. We downloaded data from January 2012 to December 2015 from the package *qrmdata* and compute weekly returns. Due to data issues, we remove two firms (DLG.L and III.L), and then add two firms using based on alphabetical order.
+This assignment considers the first 50 stocks (alphabetical order) in the FTSE 100 universe. We downloaded data from January 2012 to December 2015 from the package *qrmdata* and compute weekly returns. Due to data issues, we remove two firms (DLG.L and III.L), and then add two firms based on alphabetical order.
 
 
 ```{r, message=FALSE, warning=FALSE}
@@ -104,7 +104,7 @@ ggplot(results_b1, aes(x = as.factor(dimension), y = mean_return, fill = portfol
 
 We now analyze the impact of variances, given dimension and correlation structure. The set of plots illustrates how increasing asset-level variances affects portfolio volatility. This is operationalized by scaling the asset variances uniformly via a “scale factor”, applied equally across all assets in the universe. The correlation structure is fixed and hence portfolio weights remain unchanged, given the scalar factor multiply all asset variances.
 
-The first two plots show how portfolio volatility responds to increases in the variance scaling factor under the minvar and maxdiv strategies, respectively. In this exercise, any increase in individual asset variances leads to a mechanical and proportional increase in portfolio-level variance, given the correlation structure and the scalar factor (relative variances remain unchanged). This is evident in the monotonic rise in the distribution of portfolio volatility across scale factors in both strategies. The dispersion increases in portfolios that include fewer assets, reflecting a reduced ability to diversify away the idiosyncratic risk as variance increases. The third plot shows that mean returns remain constant across scale factors, as expected, only the variances are scaled, not the return process. 
+The first two plots show how portfolio volatility responds to increases in the variance scaling factor under the minvar and maxdiv strategies, respectively. In this exercise, any increase in individual asset variances leads to a mechanical and proportional increase in portfolio-level variance, given the correlation structure and the scalar factor (relative variances remain unchanged). This is evident in the monotonic rise in the distribution of portfolio volatility across scale factors in both strategies. The third plot shows that mean returns remain constant across scale factors, as expected, only the variances are scaled, not the return process. 
 
 ```{r, message=FALSE, warning=FALSE}
 
@@ -429,11 +429,11 @@ if (exists("results_gauss") && is.data.frame(results_gauss) && nrow(results_gaus
 
 #### 2.2 Student-t model
 
-This subsections considers the same approach as in subsection 2.1 but with a Student-t model. The table displays the 95% bootstrap confidence intervals for the mean, volatility, and Sharpe ratio under the Student-t model, across two portfolios: maxdiv and minvar. Starting with the mean, the maxdiv portfolio shows a 95% confidence interval ranging from approximately 0.040% to 0.533% per week, with a median of 0.300%. For the minvar strategy, the interval is tighter and lower, from 0.031% to 0.487%, with a median of 0.268%. These results suggest that, even under the Student-t model, the maxdiv strategy is expected to yield slightly higher returns on average, although the distributions are relatively close. 
+This subsection considers the same approach as in subsection 2.1 but with a Student-t model. The table displays the 95% bootstrap confidence intervals for the mean, volatility, and Sharpe ratio under the Student-t model, across two portfolios: maxdiv and minvar. Starting with the mean, the maxdiv portfolio shows a 95% confidence interval ranging from approximately 0.040% to 0.533% per week, with a median of 0.300%. For the minvar strategy, the interval is tighter and lower, from 0.031% to 0.487%, with a median of 0.268%. These results suggest that, even under the Student-t model, the maxdiv strategy is expected to yield slightly higher returns on average, although the distributions are relatively close. 
 
 Turning to volatility and risk-adjusted performance, the maxdiv portfolio exhibits a higher volatility profile, with a 95% confidence interval ranging from 1.45% to 1.94%, and a median of 1.67%, while the minvar strategy shows lower volatility, between 1.33% and 1.74%, with a median of 1.52%. These estimates confirm that minvar fulfills its core objective of risk reduction, and notably, the volatility intervals under the Student-t distribution remain quite stable and closely aligned with those observed under the Gaussian model. In terms of Sharpe ratio, maxdiv spans a wider interval, from 0.024 to 0.332, with a median of 0.179, while minvar displays a tighter and more favorable range of 0.195 to 0.336, with a median of 0.175.
 
-Comparing the Gaussian and Student-t bootstrap results reveals several important insights about how distributional assumptions affect perceived performance. The Student-t model consistently yields wider and more conservative confidence intervals. The comparison between the two models shows how distributional assumptions materially affect performance evaluation. Across all metrics, the Student-t model delivers more conservative estimates, especially for mean and Sharpe ratio. This reflects the Student-t’s ability to capture heavy tails. In contrast, the Gaussian model, by assuming thin tails, overstates average performance and compresses confidence interval.
+Comparing the Gaussian and Student-t bootstrap results reveals several important insights about how distributional assumptions affect perceived performance. The Student-t model consistently yields wider and more conservative confidence intervals. The comparison between the two models shows how distributional assumptions materially affect performance evaluation. Across all metrics, the Student-t model delivers more conservative estimates, especially for mean and volatility. This reflects the Student-t’s ability to capture heavy tails. In contrast, the Gaussian model, by assuming thin tails, understates uncertainty and compresses confidence interval.
 
 
 ```{r, message=FALSE, warning=FALSE}
@@ -588,11 +588,11 @@ if (exists("results_t") && is.data.frame(results_t) && nrow(results_t) > 0) {
 
 #### 2.3 In-sample shrinkage approaches
 
-We now analyse the impact of robustification techniques. In particular, we compare the results considering the sample covariance matrix agains the results using two alternative shrinkage estimators from the package RiskPortfolios: 1- Ledoit-Wolf estimator (see Ledoit and Wolf (2003)); 2- Factor analysis with a total of 3 factors (see Harman (1976)).
+We now analyse the impact of robustification techniques. In particular, we compare the results considering the sample covariance matrix agains the results using two shrinkage estimators from the package RiskPortfolios: 1- Ledoit-Wolf estimator (see Ledoit and Wolf (2003)); 2- Factor analysis with a total of 3 factors (see Harman (1976)).
 
 First, to provide a visualization about what these alternative estimators are doing, we plot three heatmaps, one for each of the covariance matrix estimator. These heatmaps consider the entire sample period and all 50 assets. The sample covariance matrix heatmap reveals a highly detailed and noisy structure, where the clustering patterns appear dense and full of minor variations. This reflects the fact that the sample covariance estimator uses only historical data without any form of regularization. While the heatmap retains all the empirical relationships, it also retains much of the noise, which can lead to unstable portfolio optimization results.
 
-The Ledoit-Wolf covariance matrix heatmap, by contrast, exhibits smoother transitions and more structured block patterns. This estimator applies shrinkage toward a structured target, which reduces estimation error and enhances numerical stability. The heatmap visually reflects this improvement: the noise is visibly reduced, and asset clusters emerge. The result is a more stable and reliable covariance estimate, especially valuable in high-dimensional settings.
+The Ledoit-Wolf covariance matrix heatmap, by contrast, exhibits more structured block patterns. This estimator applies shrinkage toward a structured target, which reduces estimation error and enhances numerical stability. The heatmap visually reflects this improvement: the noise is visibly reduced, and asset clusters emerge. The result is a more stable and reliable covariance estimate, especially valuable in high-dimensional settings.
 
 The factor covariance matrix heatmap shows an even more pronounced level of shrinkage and structure. Instead of estimating pairwise covariances directly, this approach models asset covariances via exposures to a small number of underlying factors. This structure implies that much of the correlation is being captured through common latent components, and idiosyncratic relationships are downweighted or ignored.
 
@@ -610,11 +610,11 @@ title(main = "Factor covariance matrix estimator heatmap", font.main = 1)
 
 ```
 
-We now investigate the in-sample impact of different covariance matrix estimators on the performance of optimized portfolios using bootstrap resampling (B = 1000), we evaluate two portfolio strategies, minimum variance and maximum diversification. The first boxplot shows that shrinkage reduces volatility dispersion for both portfolios. The sample covariance produces wider spreads and more extreme outliers, particularly for minvar, where the upper tail is visibly large. In contrast, both Ledoit-Wolf and the factor model result in significantly tighter and lower volatility estimates, implying more stable risk profiles. This is expected: shrinkage reduces estimation error by pulling extreme covariance entries toward a structured prior, leading to greater robustness in the optimized weights.
+We now investigate the in-sample impact of different covariance matrix estimators on the performance of optimized portfolios using bootstrap resampling (B = 1000), we evaluate two portfolio strategies, minimum variance and maximum diversification. The first boxplot shows that shrinkage reduces volatility dispersion for both portfolios. The sample covariance produces wider spreads and more extreme outliers. In contrast, both Ledoit-Wolf and the factor model result in tighter and lower volatility estimates, implying more stable risk profiles. This is expected: shrinkage reduces estimation error by pulling extreme covariance entries toward a structured prior, leading to greater robustness in the optimized weights.
 
-Importantly, for maxdiv, the LW estimator produces the lowest volatility on average, while the factor model stabilizes but with a slightly higher level. This may be due to the factor model ignoring some idiosyncratic variation. For minvar, the pattern is similar: sample covariance has more noise, LW delivers lower average volatility, and the factor model provides moderate stability.
+Importantly, for maxdiv, the LW estimator produces the lowest volatility on average, while the factor model stabilizes but with a slightly higher level. This may be due to the factor model ignoring some idiosyncratic variation. For minvar, the pattern is similar: sample covariance has more noise, LW delivers lower average volatility.
 
-In terms of means, the picture changes. The sample estimator tends to produce higher median returns but also exhibits greater dispersion, especially for maxdiv. This suggests that optimizing with the raw sample covariance matrix may lead to more aggressive portfolios, reflecting both upside potential and downside risk due to overfitting noise in the sample. In contrast, Ledoit-Wolf and factor-based portfolios yield more conservative return profiles, with tighter distributions centered around slightly lower means.  
+In terms of means, the picture changes. The sample estimator tends to produce higher median for minvol and similar levels for maxdiv. This suggests that optimizing with the raw sample covariance matrix may lead to more aggressive portfolios, reflecting both upside potential and downside risk due to overfitting noise in the sample. In contrast, Ledoit-Wolf and factor-based portfolios yield more conservative return profiles, with tighter distributions centered around slightly lower means.  
 
 These results reaffirm that shrinkage estimators improve stability, reducing the risk of overfitting and leading to more reliable portfolio construction, especially when asset dimensionality is high or the sample size is limited. We expect that these results should be even more pronounce when we consider out-of-sample results.
 
@@ -655,31 +655,19 @@ ggplot(res, aes(x = cov_est, y = mean, fill = cov_est)) +
 
 In this analysis, we explore how different resampling strategies impact the construction and stability of optimized portfolios when using the sample covariance matrix estimator. We consider three resampling schemes. First, the iid bootstrap, which resamples rows independently with replacement. Second, the block bootstrap, which resamples consecutive blocks of returns to preserve dependence. In this method, we consider the approach Politis and Romano (1994) and use the package tseries with option type of stationarity. Finally, the third method is Gaussian resampling, which generates synthetic returns from a multivariate normal distribution calibrated to the sample mean and covariance.
 
-The weights violin plots illustrate the distribution of portfolio weights across resamples for each (resample scheme × portfolio) pair. Across both minvar and maxdiv, iid resampling consistently produces the widest distribution of weights. This indicates that weights are highly sensitive to random resampling of return rows. Block bootstrap, which retains temporal structure, and Gaussian bootstrap lead to slightly tighter weight distributions. Moreover, the violin plots of maxdiv, they tend to be taller and wider than those of minvar. This reflects that weights in maxdiv vary more across bootstrap samples. In minvar, portfolios often concentrate on a few low-volatility assets.
+The plots for the dispersion of mean, volatility and Sharpe ratio summarise how results change according to each resampling scheme for each portfolio strategy. When the two strategies are evaluated under identical resampling schemes, the maximum diversification portfolio consistently posts the higher mean return but also exhibits the larger volatility. Those offsetting movements leave the Sharpe ratio distribution almost unchanged relative to the minvol portfolio, with the exception to the iid bootstrap for the minvol strategy. The medians of the two boxes are virtually coincident under every specification. 
 
-The plots for the dispersion of mean, volatility and Sharpe ratio summarise how results change according to each resampling scheme. The iid bootstraped portfolios deliver the biggest estimation uncertainty, as evidenced by the tallest boxes and the single lowest Sharpe outliers. Block bootstrap generally produces shorter vertical ranges for both mean and Sharpe, suggesting that once serial dependence is preserved, the estimator is more stable than under iid resampling.
+The dispersion of Sharpe ratios, however, differs across resampling techniques. Under iid bootstrapping the Sharpe distribution is widest. Resampling individual weeks does not account for serial dependence, producing some resamples with unrealistically low aggregate risk and others with inflated risk, and the optimiser reacts by generating a broad range of outcomes. The Gaussian parametric resampler imposes a multivariate-normal structure on every draw, the absence of fat tails removes the most extreme scenarios. The inter-quartile range is relatively close to the iid case. The stationary block bootstrap yields the tightest Sharpe distribution of all, retaining volatility clustering in each pseudo-sample penalises portfolios that are overly sensitive to transient covariance patterns, leading to a narrower, more reliable band of risk-adjusted returns than those produced by iid or Gaussian resampling.
 
 
 ```{r, message=FALSE, warning=FALSE}
 
 boot_out <- boot_portfolio_stats(rets, B = 200)
 
-w_long <- purrr::imap_dfr(boot_out$weights_raw, ~
-                            as.data.frame(.x) |>
-                            pivot_longer(everything(), values_to = "w") |>
-                            mutate(tag = .y))
-
 metric_long <- dplyr::bind_rows(boot_out$metrics_raw) |>
   pivot_longer(c(mean, vol, sharpe),
                names_to = "stat",
                values_to = "value")
-
-p_weights <- ggplot(w_long, aes(tag, w, fill = tag)) +
-  geom_violin(trim = FALSE, alpha = .6) +
-  labs(title = "Weight dispersion", x = NULL, y = "Weight") +
-  theme_minimal(base_size = 12) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1),
-        legend.position = "none")
 
 p_metrics <- ggplot(metric_long, aes(tag, value, fill = tag)) +
   geom_violin(trim = FALSE, alpha = .6) +
@@ -699,8 +687,6 @@ p_metrics_box <- ggplot(metric_long, aes(tag, value, fill = tag)) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1),
         legend.position = "none")
 
-
-p_weights
 p_metrics
 p_metrics_box
 
@@ -780,7 +766,11 @@ ggplot(roll_vol, aes(week, roll_vol, colour = portfolio)) +
 
 Keeping the same rolling window and weekly re-balancing schedule, we now replace the noisy sample covariance with two shrinkage estimators: (i) Ledoit–Wolf linear shrinkage toward the identity matrix, and (ii) a 3-factor model whose covariance is shrunk toward the factor block. These are the same estimators we considered in section 2. Both estimators lift the smallest eigenvalues and lower the condition number. Out-of-sample this translates into visibly smoother return trajectories and lower volatility for both portfolios. 
 
-The maxdiv portfolio benefits the most form the shrinkage approahces, its realized volatility drops markedly, pushing its Sharpe ratio above the minvar strategy. The table confirms that intuition. With the plain sample covariance the maxdiv strategy gives an annualized Sharpe of 0.055. Switching to Ledoit–Wolf lifts the mean return while volatility is virtually unchanged, so the Sharpe climbs to 0.072. The 3-factor shrinkage goes one step further: volatility drops by another 10–20 bp and the mean rises again, pushing the Sharpe to 0.078. For the minvar strategy the gains are smaller in percentage terms  but the pattern is the same.
+For the maxdiv portfolio, both shrinkage estimators outperform the sample covariance in all performance metrics. The mean return increases from 6.08% (sample) to 7.76% (Ledoit--Wolf) and 8.24% (3-factor), while volatility remains largely unchanged. The Sharpe ratio improves from 0.0560 under the sample estimator to 0.0725 with Ledoit-Wolf and 0.0776 with the 3-factor model. The cumulative return also rises, from 10.4% for the sample to 14.3% and 15.4% for the Ledoit-Wolf and 3-factor estimators, respectively. 
+
+A similar pattern is observed for the minvol portfolio. The sample covariance yields a mean return of 7.32% and a Sharpe ratio of 0.0776. Both shrinkage methods again improve these figures, with the 3-factor model achieving the highest mean return (8.12%) and Sharpe ratio (0.0857), along with a cumulative return of 15.6%, compared to 13.8% under the sample. 
+
+Overall, both shrinkage estimators deliver superior out-of-sample performance relative to the sample covariance, with the 3-factor approach offering the best overall results for both portfolios in terms of return, risk-adjusted return, and cumulative return.
 
 
 ```{r, message=FALSE, warning=FALSE}
@@ -789,18 +779,15 @@ ann_fac <- sqrt(52)
 perf_tbl <- oos %>%
   group_by(portfolio, cov_est) %>%
   summarise(
-    mean_ret = mean(ret),
-    vol      = sd(ret),
+    mean_ret = mean(ret) * 52,
+    vol      = sd(ret) * ann_fac,
     sharpe   = mean_ret / vol,
     cum_ret  = prod(1 + ret) - 1,
     .groups = "drop"
-  ) %>%
-  mutate(
-    mean_ret = mean_ret * 52,            
-    vol      = vol * ann_fac
-  )
-  
+  ) 
+
 perf_tbl
+
 
 # Cumulative return data 
 aux <- oos %>%
@@ -811,7 +798,7 @@ aux <- oos %>%
 
 oos_start <- min(oos$week)             
 
-ggplot(aux,
+p <- ggplot(aux,
        aes(x = week, y = aux, colour = cov_est)) +
   geom_line() +
   facet_wrap(~ portfolio, nrow = 2) +
@@ -822,6 +809,7 @@ ggplot(aux,
                          oos_start, ")"),
        x = "Week", y = "Wealth (start of OOS = 1)") +
   theme_minimal(base_size = 13)
+
 
 # 52-week rolling volatility plot 
 plot_rolling_vol <- function(oos_tbl) {
@@ -840,8 +828,6 @@ plot_rolling_vol <- function(oos_tbl) {
     theme_minimal(base_size = 13) 
 }
 
-
-plot_rolling_vol(oos)   
 
 ```
 
@@ -918,7 +904,6 @@ ggplot(roll_vol_f, aes(week, rvol, colour = resample)) +
   labs(title = "OOS rolling 52-week volatility",
        x = "Week", y = "Ann. volatility") +
   theme_minimal(base_size = 13)
-
 
 ```
 
